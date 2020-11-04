@@ -6,6 +6,7 @@ package gen
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"go/token"
 	"go/types"
@@ -17,6 +18,7 @@ import (
 	"unicode"
 
 	"github.com/facebook/ent"
+	"github.com/facebook/ent/dialect/entsql"
 	"github.com/facebook/ent/dialect/sql/schema"
 	"github.com/facebook/ent/entc/load"
 	"github.com/facebook/ent/schema/field"
@@ -44,6 +46,9 @@ type (
 		// ForeignKeys are the foreign-keys that resides in the type table.
 		ForeignKeys []*ForeignKey
 		foreignKeys map[string]struct{}
+		// Annotations that were defined for the field in the schema.
+		// The mapping is from the Annotation.Name() to a JSON decoded object.
+		Annotations map[string]interface{}
 	}
 
 	// Field holds the information of a type field used for the templates.
@@ -160,15 +165,20 @@ type (
 
 // NewType creates a new type and its fields from the given schema.
 func NewType(c *Config, schema *load.Schema) (*Type, error) {
+	idType := c.IDType
+	if idType == nil {
+		idType = defaultIDType
+	}
 	typ := &Type{
 		Config: c,
 		ID: &Field{
 			Name:      "id",
-			Type:      c.IDType,
+			Type:      idType,
 			StructTag: structTag("id", ""),
 		},
 		schema:      schema,
 		Name:        schema.Name,
+		Annotations: schema.Annotations,
 		Fields:      make([]*Field, 0, len(schema.Fields)),
 		fields:      make(map[string]*Field, len(schema.Fields)),
 		foreignKeys: make(map[string]struct{}),
@@ -214,10 +224,25 @@ func (t Type) Label() string {
 
 // Table returns SQL table name of the node/type.
 func (t Type) Table() string {
+	if table := t.EntSQL().Table; table != "" {
+		return table
+	}
 	if t.schema != nil && t.schema.Config.Table != "" {
 		return t.schema.Config.Table
 	}
 	return snake(rules.Pluralize(t.Name))
+}
+
+// EntSQL returns the EntSQL annotation if exists, or an empty one.
+func (t Type) EntSQL() entsql.Annotation {
+	annotate := entsql.Annotation{}
+	if t.Annotations == nil || t.Annotations[annotate.Name()] == nil {
+		return annotate
+	}
+	if buf, err := json.Marshal(t.Annotations[annotate.Name()]); err == nil {
+		_ = json.Unmarshal(buf, &annotate)
+	}
+	return annotate
 }
 
 // Package returns the package name of this node.
@@ -231,11 +256,11 @@ func (t Type) Receiver() string {
 	return receiver(t.Name)
 }
 
-// HasAssoc returns true if this type has an assoc edge with the given name.
-// faster than map access for most cases.
+// HasAssoc returns true if this type has an assoc-edge (non-inverse)
+// with the given name. faster than map access for most cases.
 func (t Type) HasAssoc(name string) (*Edge, bool) {
 	for _, e := range t.Edges {
-		if name == e.Name {
+		if name == e.Name && !e.IsInverse() {
 			return e, true
 		}
 	}
@@ -328,7 +353,7 @@ func (t Type) FKEdges() (edges []*Edge) {
 // RuntimeMixin returns schema mixin that needs to be loaded at
 // runtime. For example, for default values, validators or hooks.
 func (t Type) RuntimeMixin() bool {
-	return len(t.MixedInFields()) > 0 || len(t.MixedInHooks()) > 0
+	return len(t.MixedInFields()) > 0 || len(t.MixedInHooks()) > 0 || len(t.MixedInPolicies()) > 0
 }
 
 // MixedInFields returns the indices of mixin holds runtime code.
@@ -353,6 +378,20 @@ func (t Type) MixedInHooks() []int {
 	}
 	idx := make(map[int]struct{})
 	for _, h := range t.schema.Hooks {
+		if h.MixedIn {
+			idx[h.MixinIndex] = struct{}{}
+		}
+	}
+	return sortedKeys(idx)
+}
+
+// MixedInPolicies returns the indices of mixin with policies.
+func (t Type) MixedInPolicies() []int {
+	if t.schema == nil {
+		return nil
+	}
+	idx := make(map[int]struct{})
+	for _, h := range t.schema.Policy {
 		if h.MixedIn {
 			idx[h.MixinIndex] = struct{}{}
 		}
@@ -537,6 +576,11 @@ func (t Type) QueryName() string {
 	return pascal(t.Name) + "Query"
 }
 
+// FilterName returns the struct name denoting the filter-builder for this type.
+func (t Type) FilterName() string {
+	return pascal(t.Name) + "Filter"
+}
+
 // CreateName returns the struct name denoting the create-builder for this type.
 func (t Type) CreateName() string {
 	return pascal(t.Name) + "Create"
@@ -604,12 +648,20 @@ func (t Type) HookPositions() []*load.Position {
 	return nil
 }
 
-// HasPolicy returns whether a privacy policy was declared in the type schema.
-func (t Type) HasPolicy() bool {
+// NumHooks returns the number of privacy-policy declared in the type schema.
+func (t Type) NumPolicy() int {
+	if t.schema != nil {
+		return len(t.schema.Policy)
+	}
+	return 0
+}
+
+// PolicyPositions returns the position information of privacy policy declared in the type schema.
+func (t Type) PolicyPositions() []*load.Position {
 	if t.schema != nil {
 		return t.schema.Policy
 	}
-	return false
+	return nil
 }
 
 // RelatedTypes returns all the types (nodes) that
@@ -761,8 +813,11 @@ func (f Field) MutationReset() string {
 	return name
 }
 
-// IsBool returns true if the field is an bool field.
+// IsBool returns true if the field is a bool field.
 func (f Field) IsBool() bool { return f.Type != nil && f.Type.Type == field.TypeBool }
+
+// IsBytes returns true if the field is a bytes field.
+func (f Field) IsBytes() bool { return f.Type != nil && f.Type.Type == field.TypeBytes }
 
 // IsTime returns true if the field is a timestamp field.
 func (f Field) IsTime() bool { return f.Type != nil && f.Type.Type == field.TypeTime }
@@ -1062,6 +1117,11 @@ func (e Edge) BuilderField() string {
 	return builderField(e.Name)
 }
 
+// EagerLoadField returns the struct field (of query builder) for storing the eager-loading info.
+func (e Edge) EagerLoadField() string {
+	return "with" + pascal(e.Name)
+}
+
 // StructField returns the struct member of the edge in the model.
 func (e Edge) StructField() string {
 	return pascal(e.Name)
@@ -1203,36 +1263,56 @@ func structTag(name, tag string) string {
 // and ensures it doesn't conflict with Go keywords and other
 // builder fields and it's not exported.
 func builderField(name string) string {
-	if token.Lookup(name).IsKeyword() || name == "config" || strings.ToUpper(name[:1]) == name[:1] {
+	_, ok := privateField[name]
+	if ok || token.Lookup(name).IsKeyword() || strings.ToUpper(name[:1]) == name[:1] {
 		return "_" + name
 	}
 	return name
 }
 
-// global identifiers used by the generated package.
-var globalIdent = names(
-	"AggregateFunc",
-	"As",
-	"Asc",
-	"Count",
-	"Debug",
-	"Desc",
-	"Driver",
-	"Hook",
-	"Log",
-	"MutateFunc",
-	"Mutation",
-	"Mutator",
-	"Op",
-	"Option",
-	"OrderFunc",
-	"Max",
-	"Mean",
-	"Min",
-	"Sum",
-	"Policy",
-	"Query",
-	"Value",
+var (
+	// global identifiers used by the generated package.
+	globalIdent = names(
+		"AggregateFunc",
+		"As",
+		"Asc",
+		"Client",
+		"Count",
+		"Debug",
+		"Desc",
+		"Driver",
+		"Hook",
+		"Log",
+		"MutateFunc",
+		"Mutation",
+		"Mutator",
+		"Op",
+		"Option",
+		"OrderFunc",
+		"Max",
+		"Mean",
+		"Min",
+		"Sum",
+		"Policy",
+		"Query",
+		"Value",
+	)
+	// private fields used by the different builders.
+	privateField = names(
+		"config",
+		"done",
+		"hooks",
+		"limit",
+		"mutation",
+		"offset",
+		"oldValue",
+		"order",
+		"op",
+		"path",
+		"predicates",
+		"typ",
+		"unique",
+	)
 )
 
 func names(ids ...string) map[string]struct{} {

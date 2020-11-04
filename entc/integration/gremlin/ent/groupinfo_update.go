@@ -23,14 +23,13 @@ import (
 // GroupInfoUpdate is the builder for updating GroupInfo entities.
 type GroupInfoUpdate struct {
 	config
-	hooks      []Hook
-	mutation   *GroupInfoMutation
-	predicates []predicate.GroupInfo
+	hooks    []Hook
+	mutation *GroupInfoMutation
 }
 
 // Where adds a new predicate for the builder.
 func (giu *GroupInfoUpdate) Where(ps ...predicate.GroupInfo) *GroupInfoUpdate {
-	giu.predicates = append(giu.predicates, ps...)
+	giu.mutation.predicates = append(giu.mutation.predicates, ps...)
 	return giu
 }
 
@@ -172,7 +171,7 @@ func (giu *GroupInfoUpdate) gremlin() *dsl.Traversal {
 	}
 	constraints := make([]*constraint, 0, 1)
 	v := g.V().HasLabel(groupinfo.Label)
-	for _, p := range giu.predicates {
+	for _, p := range giu.mutation.predicates {
 		p(v)
 	}
 	var (
@@ -322,11 +321,11 @@ func (giuo *GroupInfoUpdateOne) Save(ctx context.Context) (*GroupInfo, error) {
 
 // SaveX is like Save, but panics if an error occurs.
 func (giuo *GroupInfoUpdateOne) SaveX(ctx context.Context) *GroupInfo {
-	gi, err := giuo.Save(ctx)
+	node, err := giuo.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return gi
+	return node
 }
 
 // Exec executes the query on the entity.

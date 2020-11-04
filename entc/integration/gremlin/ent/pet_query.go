@@ -91,23 +91,23 @@ func (pq *PetQuery) QueryOwner() *UserQuery {
 
 // First returns the first Pet entity in the query. Returns *NotFoundError when no pet was found.
 func (pq *PetQuery) First(ctx context.Context) (*Pet, error) {
-	pes, err := pq.Limit(1).All(ctx)
+	nodes, err := pq.Limit(1).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(pes) == 0 {
+	if len(nodes) == 0 {
 		return nil, &NotFoundError{pet.Label}
 	}
-	return pes[0], nil
+	return nodes[0], nil
 }
 
 // FirstX is like First, but panics if an error occurs.
 func (pq *PetQuery) FirstX(ctx context.Context) *Pet {
-	pe, err := pq.First(ctx)
+	node, err := pq.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
 	}
-	return pe
+	return node
 }
 
 // FirstID returns the first Pet id in the query. Returns *NotFoundError when no id was found.
@@ -123,8 +123,8 @@ func (pq *PetQuery) FirstID(ctx context.Context) (id string, err error) {
 	return ids[0], nil
 }
 
-// FirstXID is like FirstID, but panics if an error occurs.
-func (pq *PetQuery) FirstXID(ctx context.Context) string {
+// FirstIDX is like FirstID, but panics if an error occurs.
+func (pq *PetQuery) FirstIDX(ctx context.Context) string {
 	id, err := pq.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -134,13 +134,13 @@ func (pq *PetQuery) FirstXID(ctx context.Context) string {
 
 // Only returns the only Pet entity in the query, returns an error if not exactly one entity was returned.
 func (pq *PetQuery) Only(ctx context.Context) (*Pet, error) {
-	pes, err := pq.Limit(2).All(ctx)
+	nodes, err := pq.Limit(2).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	switch len(pes) {
+	switch len(nodes) {
 	case 1:
-		return pes[0], nil
+		return nodes[0], nil
 	case 0:
 		return nil, &NotFoundError{pet.Label}
 	default:
@@ -150,11 +150,11 @@ func (pq *PetQuery) Only(ctx context.Context) (*Pet, error) {
 
 // OnlyX is like Only, but panics if an error occurs.
 func (pq *PetQuery) OnlyX(ctx context.Context) *Pet {
-	pe, err := pq.Only(ctx)
+	node, err := pq.Only(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return pe
+	return node
 }
 
 // OnlyID returns the only Pet id in the query, returns an error if not exactly one id was returned.
@@ -193,11 +193,11 @@ func (pq *PetQuery) All(ctx context.Context) ([]*Pet, error) {
 
 // AllX is like All, but panics if an error occurs.
 func (pq *PetQuery) AllX(ctx context.Context) []*Pet {
-	pes, err := pq.All(ctx)
+	nodes, err := pq.All(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return pes
+	return nodes
 }
 
 // IDs executes the query and returns a list of Pet ids.
@@ -255,6 +255,9 @@ func (pq *PetQuery) ExistX(ctx context.Context) bool {
 // Clone returns a duplicate of the query builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
 func (pq *PetQuery) Clone() *PetQuery {
+	if pq == nil {
+		return nil
+	}
 	return &PetQuery{
 		config:     pq.config,
 		limit:      pq.limit,
@@ -262,6 +265,8 @@ func (pq *PetQuery) Clone() *PetQuery {
 		order:      append([]OrderFunc{}, pq.order...),
 		unique:     append([]string{}, pq.unique...),
 		predicates: append([]predicate.Pet{}, pq.predicates...),
+		withTeam:   pq.withTeam.Clone(),
+		withOwner:  pq.withOwner.Clone(),
 		// clone intermediate query.
 		gremlin: pq.gremlin.Clone(),
 		path:    pq.path,

@@ -27,14 +27,13 @@ import (
 // FieldTypeUpdate is the builder for updating FieldType entities.
 type FieldTypeUpdate struct {
 	config
-	hooks      []Hook
-	mutation   *FieldTypeMutation
-	predicates []predicate.FieldType
+	hooks    []Hook
+	mutation *FieldTypeMutation
 }
 
 // Where adds a new predicate for the builder.
 func (ftu *FieldTypeUpdate) Where(ps ...predicate.FieldType) *FieldTypeUpdate {
-	ftu.predicates = append(ftu.predicates, ps...)
+	ftu.mutation.predicates = append(ftu.mutation.predicates, ps...)
 	return ftu
 }
 
@@ -1101,7 +1100,7 @@ func (ftu *FieldTypeUpdate) gremlinSave(ctx context.Context) (int, error) {
 
 func (ftu *FieldTypeUpdate) gremlin() *dsl.Traversal {
 	v := g.V().HasLabel(fieldtype.Label)
-	for _, p := range ftu.predicates {
+	for _, p := range ftu.mutation.predicates {
 		p(v)
 	}
 	var (
@@ -2461,11 +2460,11 @@ func (ftuo *FieldTypeUpdateOne) Save(ctx context.Context) (*FieldType, error) {
 
 // SaveX is like Save, but panics if an error occurs.
 func (ftuo *FieldTypeUpdateOne) SaveX(ctx context.Context) *FieldType {
-	ft, err := ftuo.Save(ctx)
+	node, err := ftuo.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return ft
+	return node
 }
 
 // Exec executes the query on the entity.

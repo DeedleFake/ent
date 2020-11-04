@@ -5,7 +5,7 @@ title: Fields
 
 ## Quick Summary
 
-Fields (or properties) in the schema are the attributes of the vertex. For example, a `User`
+Fields (or properties) in the schema are the attributes of the node. For example, a `User`
 with 4 fields: `age`, `name`, `username` and `created_at`:
 
 ![re-fields-properties](https://entgo.io/assets/er_fields_properties.png)
@@ -50,9 +50,10 @@ The following types are currently supported by the framework:
 - `bool`
 - `string`
 - `time.Time`
-- `[]byte` (only supported by SQL dialects).
-- `JSON` (only supported by SQL dialects).
-- `Enum` (only supported by SQL dialects).
+- `[]byte` (SQL only).
+- `JSON` (SQL only).
+- `Enum` (SQL only).
+- `UUID` (SQL only).
 
 <br/>
 
@@ -63,6 +64,7 @@ import (
 	"time"
 	"net/url"
 
+	"github.com/google/uuid"
 	"github.com/facebook/ent"
 	"github.com/facebook/ent/schema/field"
 )
@@ -92,6 +94,8 @@ func (User) Fields() []ent.Field {
 		field.Enum("state").
 			Values("on", "off").
 			Optional(),
+		field.UUID("uuid", uuid.UUID{}).
+			Default(uuid.New),
 	}
 }
 ```
@@ -271,6 +275,25 @@ func (Group) Fields() []ent.Field {
 }
 ```
 
+Here is another example for writing a reusable validator:
+
+```go
+// MaxRuneCount validates the rune length of a string by using the unicode/utf8 package.
+func MaxRuneCount(maxLen int) func(s string) error {
+	return func(s string) error {
+		if utf8.RuneCountInString(s) > maxLen {
+			return errors.New("value is more than the max length")
+		}
+		return nil
+	}
+}
+
+field.String("name").
+	Validate(MaxRuneCount(10))
+field.String("nickname").
+	Validate(MaxRuneCount(20))
+```
+
 ## Built-in Validators
 
 The framework provides a few built-in validators for each type:
@@ -287,6 +310,7 @@ The framework provides a few built-in validators for each type:
   - `MinLen(i)`
   - `MaxLen(i)`
   - `Match(regexp.Regexp)`
+  - `NotEmpty`
 
 ## Optional
 

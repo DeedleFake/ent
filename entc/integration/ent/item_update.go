@@ -20,14 +20,13 @@ import (
 // ItemUpdate is the builder for updating Item entities.
 type ItemUpdate struct {
 	config
-	hooks      []Hook
-	mutation   *ItemMutation
-	predicates []predicate.Item
+	hooks    []Hook
+	mutation *ItemMutation
 }
 
 // Where adds a new predicate for the builder.
 func (iu *ItemUpdate) Where(ps ...predicate.Item) *ItemUpdate {
-	iu.predicates = append(iu.predicates, ps...)
+	iu.mutation.predicates = append(iu.mutation.predicates, ps...)
 	return iu
 }
 
@@ -98,7 +97,7 @@ func (iu *ItemUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			},
 		},
 	}
-	if ps := iu.predicates; len(ps) > 0 {
+	if ps := iu.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
 				ps[i](selector)
@@ -159,11 +158,11 @@ func (iuo *ItemUpdateOne) Save(ctx context.Context) (*Item, error) {
 
 // SaveX is like Save, but panics if an error occurs.
 func (iuo *ItemUpdateOne) SaveX(ctx context.Context) *Item {
-	i, err := iuo.Save(ctx)
+	node, err := iuo.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return i
+	return node
 }
 
 // Exec executes the query on the entity.
@@ -179,7 +178,7 @@ func (iuo *ItemUpdateOne) ExecX(ctx context.Context) {
 	}
 }
 
-func (iuo *ItemUpdateOne) sqlSave(ctx context.Context) (i *Item, err error) {
+func (iuo *ItemUpdateOne) sqlSave(ctx context.Context) (_node *Item, err error) {
 	_spec := &sqlgraph.UpdateSpec{
 		Node: &sqlgraph.NodeSpec{
 			Table:   item.Table,
@@ -195,9 +194,9 @@ func (iuo *ItemUpdateOne) sqlSave(ctx context.Context) (i *Item, err error) {
 		return nil, &ValidationError{Name: "ID", err: fmt.Errorf("missing Item.ID for update")}
 	}
 	_spec.Node.ID.Value = id
-	i = &Item{config: iuo.config}
-	_spec.Assign = i.assignValues
-	_spec.ScanValues = i.scanValues()
+	_node = &Item{config: iuo.config}
+	_spec.Assign = _node.assignValues
+	_spec.ScanValues = _node.scanValues()
 	if err = sqlgraph.UpdateNode(ctx, iuo.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{item.Label}
@@ -206,5 +205,5 @@ func (iuo *ItemUpdateOne) sqlSave(ctx context.Context) (i *Item, err error) {
 		}
 		return nil, err
 	}
-	return i, nil
+	return _node, nil
 }

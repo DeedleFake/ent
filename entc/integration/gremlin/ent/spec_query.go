@@ -75,23 +75,23 @@ func (sq *SpecQuery) QueryCard() *CardQuery {
 
 // First returns the first Spec entity in the query. Returns *NotFoundError when no spec was found.
 func (sq *SpecQuery) First(ctx context.Context) (*Spec, error) {
-	sSlice, err := sq.Limit(1).All(ctx)
+	nodes, err := sq.Limit(1).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(sSlice) == 0 {
+	if len(nodes) == 0 {
 		return nil, &NotFoundError{spec.Label}
 	}
-	return sSlice[0], nil
+	return nodes[0], nil
 }
 
 // FirstX is like First, but panics if an error occurs.
 func (sq *SpecQuery) FirstX(ctx context.Context) *Spec {
-	s, err := sq.First(ctx)
+	node, err := sq.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
 	}
-	return s
+	return node
 }
 
 // FirstID returns the first Spec id in the query. Returns *NotFoundError when no id was found.
@@ -107,8 +107,8 @@ func (sq *SpecQuery) FirstID(ctx context.Context) (id string, err error) {
 	return ids[0], nil
 }
 
-// FirstXID is like FirstID, but panics if an error occurs.
-func (sq *SpecQuery) FirstXID(ctx context.Context) string {
+// FirstIDX is like FirstID, but panics if an error occurs.
+func (sq *SpecQuery) FirstIDX(ctx context.Context) string {
 	id, err := sq.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -118,13 +118,13 @@ func (sq *SpecQuery) FirstXID(ctx context.Context) string {
 
 // Only returns the only Spec entity in the query, returns an error if not exactly one entity was returned.
 func (sq *SpecQuery) Only(ctx context.Context) (*Spec, error) {
-	sSlice, err := sq.Limit(2).All(ctx)
+	nodes, err := sq.Limit(2).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	switch len(sSlice) {
+	switch len(nodes) {
 	case 1:
-		return sSlice[0], nil
+		return nodes[0], nil
 	case 0:
 		return nil, &NotFoundError{spec.Label}
 	default:
@@ -134,11 +134,11 @@ func (sq *SpecQuery) Only(ctx context.Context) (*Spec, error) {
 
 // OnlyX is like Only, but panics if an error occurs.
 func (sq *SpecQuery) OnlyX(ctx context.Context) *Spec {
-	s, err := sq.Only(ctx)
+	node, err := sq.Only(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return s
+	return node
 }
 
 // OnlyID returns the only Spec id in the query, returns an error if not exactly one id was returned.
@@ -177,11 +177,11 @@ func (sq *SpecQuery) All(ctx context.Context) ([]*Spec, error) {
 
 // AllX is like All, but panics if an error occurs.
 func (sq *SpecQuery) AllX(ctx context.Context) []*Spec {
-	sSlice, err := sq.All(ctx)
+	nodes, err := sq.All(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return sSlice
+	return nodes
 }
 
 // IDs executes the query and returns a list of Spec ids.
@@ -239,6 +239,9 @@ func (sq *SpecQuery) ExistX(ctx context.Context) bool {
 // Clone returns a duplicate of the query builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
 func (sq *SpecQuery) Clone() *SpecQuery {
+	if sq == nil {
+		return nil
+	}
 	return &SpecQuery{
 		config:     sq.config,
 		limit:      sq.limit,
@@ -246,6 +249,7 @@ func (sq *SpecQuery) Clone() *SpecQuery {
 		order:      append([]OrderFunc{}, sq.order...),
 		unique:     append([]string{}, sq.unique...),
 		predicates: append([]predicate.Spec{}, sq.predicates...),
+		withCard:   sq.withCard.Clone(),
 		// clone intermediate query.
 		gremlin: sq.gremlin.Clone(),
 		path:    sq.path,

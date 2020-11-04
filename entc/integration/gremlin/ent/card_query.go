@@ -92,23 +92,23 @@ func (cq *CardQuery) QuerySpec() *SpecQuery {
 
 // First returns the first Card entity in the query. Returns *NotFoundError when no card was found.
 func (cq *CardQuery) First(ctx context.Context) (*Card, error) {
-	cs, err := cq.Limit(1).All(ctx)
+	nodes, err := cq.Limit(1).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(cs) == 0 {
+	if len(nodes) == 0 {
 		return nil, &NotFoundError{card.Label}
 	}
-	return cs[0], nil
+	return nodes[0], nil
 }
 
 // FirstX is like First, but panics if an error occurs.
 func (cq *CardQuery) FirstX(ctx context.Context) *Card {
-	c, err := cq.First(ctx)
+	node, err := cq.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
 	}
-	return c
+	return node
 }
 
 // FirstID returns the first Card id in the query. Returns *NotFoundError when no id was found.
@@ -124,8 +124,8 @@ func (cq *CardQuery) FirstID(ctx context.Context) (id string, err error) {
 	return ids[0], nil
 }
 
-// FirstXID is like FirstID, but panics if an error occurs.
-func (cq *CardQuery) FirstXID(ctx context.Context) string {
+// FirstIDX is like FirstID, but panics if an error occurs.
+func (cq *CardQuery) FirstIDX(ctx context.Context) string {
 	id, err := cq.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -135,13 +135,13 @@ func (cq *CardQuery) FirstXID(ctx context.Context) string {
 
 // Only returns the only Card entity in the query, returns an error if not exactly one entity was returned.
 func (cq *CardQuery) Only(ctx context.Context) (*Card, error) {
-	cs, err := cq.Limit(2).All(ctx)
+	nodes, err := cq.Limit(2).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	switch len(cs) {
+	switch len(nodes) {
 	case 1:
-		return cs[0], nil
+		return nodes[0], nil
 	case 0:
 		return nil, &NotFoundError{card.Label}
 	default:
@@ -151,11 +151,11 @@ func (cq *CardQuery) Only(ctx context.Context) (*Card, error) {
 
 // OnlyX is like Only, but panics if an error occurs.
 func (cq *CardQuery) OnlyX(ctx context.Context) *Card {
-	c, err := cq.Only(ctx)
+	node, err := cq.Only(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return c
+	return node
 }
 
 // OnlyID returns the only Card id in the query, returns an error if not exactly one id was returned.
@@ -194,11 +194,11 @@ func (cq *CardQuery) All(ctx context.Context) ([]*Card, error) {
 
 // AllX is like All, but panics if an error occurs.
 func (cq *CardQuery) AllX(ctx context.Context) []*Card {
-	cs, err := cq.All(ctx)
+	nodes, err := cq.All(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return cs
+	return nodes
 }
 
 // IDs executes the query and returns a list of Card ids.
@@ -256,6 +256,9 @@ func (cq *CardQuery) ExistX(ctx context.Context) bool {
 // Clone returns a duplicate of the query builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
 func (cq *CardQuery) Clone() *CardQuery {
+	if cq == nil {
+		return nil
+	}
 	return &CardQuery{
 		config:     cq.config,
 		limit:      cq.limit,
@@ -263,6 +266,8 @@ func (cq *CardQuery) Clone() *CardQuery {
 		order:      append([]OrderFunc{}, cq.order...),
 		unique:     append([]string{}, cq.unique...),
 		predicates: append([]predicate.Card{}, cq.predicates...),
+		withOwner:  cq.withOwner.Clone(),
+		withSpec:   cq.withSpec.Clone(),
 		// clone intermediate query.
 		gremlin: cq.gremlin.Clone(),
 		path:    cq.path,

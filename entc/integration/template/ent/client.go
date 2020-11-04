@@ -33,7 +33,6 @@ type Client struct {
 	Pet *PetClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
-
 	// additional fields for node api
 	tables tables
 }
@@ -214,11 +213,11 @@ func (c *GroupClient) Get(ctx context.Context, id int) (*Group, error) {
 
 // GetX is like Get, but panics if an error occurs.
 func (c *GroupClient) GetX(ctx context.Context, id int) *Group {
-	gr, err := c.Get(ctx, id)
+	obj, err := c.Get(ctx, id)
 	if err != nil {
 		panic(err)
 	}
-	return gr
+	return obj
 }
 
 // Hooks returns the client hooks.
@@ -302,11 +301,11 @@ func (c *PetClient) Get(ctx context.Context, id int) (*Pet, error) {
 
 // GetX is like Get, but panics if an error occurs.
 func (c *PetClient) GetX(ctx context.Context, id int) *Pet {
-	pe, err := c.Get(ctx, id)
+	obj, err := c.Get(ctx, id)
 	if err != nil {
 		panic(err)
 	}
-	return pe
+	return obj
 }
 
 // QueryOwner queries the owner edge of a Pet.
@@ -406,11 +405,11 @@ func (c *UserClient) Get(ctx context.Context, id int) (*User, error) {
 
 // GetX is like Get, but panics if an error occurs.
 func (c *UserClient) GetX(ctx context.Context, id int) *User {
-	u, err := c.Get(ctx, id)
+	obj, err := c.Get(ctx, id)
 	if err != nil {
 		panic(err)
 	}
-	return u
+	return obj
 }
 
 // QueryPets queries the pets edge of a User.

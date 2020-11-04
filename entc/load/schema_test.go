@@ -5,12 +5,14 @@
 package load
 
 import (
+	"context"
 	"encoding/json"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/facebook/ent"
+	"github.com/facebook/ent/schema"
 	"github.com/facebook/ent/schema/edge"
 	"github.com/facebook/ent/schema/field"
 	"github.com/facebook/ent/schema/index"
@@ -28,12 +30,38 @@ func (OrderConfig) Name() string {
 	return "order_config"
 }
 
-func (o *OrderConfig) MarshalJSON() ([]byte, error) {
-	return json.Marshal(*o)
+type IDConfig struct {
+	TagName string
+}
+
+func (IDConfig) Name() string {
+	return "id_config"
+}
+
+type AnnotationMixin struct {
+	mixin.Schema
+}
+
+func (AnnotationMixin) Annotations() []schema.Annotation {
+	return []schema.Annotation{
+		IDConfig{TagName: "id tag"},
+	}
 }
 
 type User struct {
 	ent.Schema
+}
+
+func (User) Mixin() []ent.Mixin {
+	return []ent.Mixin{
+		AnnotationMixin{},
+	}
+}
+
+func (User) Annotations() []schema.Annotation {
+	return []schema.Annotation{
+		OrderConfig{FieldName: "type annotations"},
+	}
 }
 
 func (User) Fields() []ent.Field {
@@ -102,6 +130,10 @@ func TestMarshalSchema(t *testing.T) {
 		schema, err := UnmarshalSchema(buf)
 		require.NoError(t, err)
 		require.Equal(t, "User", schema.Name)
+		require.Len(t, schema.Annotations, 2)
+		ant := schema.Annotations["order_config"].(map[string]interface{})
+		require.Equal(t, ant["FieldName"], "type annotations")
+
 		require.Len(t, schema.Fields, 8)
 		require.Equal(t, "age", schema.Fields[0].Name)
 		require.Equal(t, field.TypeInt, schema.Fields[0].Info.Type)
@@ -110,7 +142,7 @@ func TestMarshalSchema(t *testing.T) {
 		require.Equal(t, field.TypeString, schema.Fields[1].Info.Type)
 		require.Equal(t, "unknown", schema.Fields[1].DefaultValue)
 		require.NotEmpty(t, schema.Fields[1].Annotations)
-		ant := schema.Fields[1].Annotations["order_config"].(map[string]interface{})
+		ant = schema.Fields[1].Annotations["order_config"].(map[string]interface{})
 		require.Equal(t, ant["FieldName"], "name")
 
 		require.Equal(t, "nillable", schema.Fields[2].Name)
@@ -297,6 +329,19 @@ func (HooksMixin) Hooks() []ent.Hook {
 	}
 }
 
+type BoringPolicy struct{}
+
+func (BoringPolicy) EvalMutation(context.Context, ent.Mutation) error { return nil }
+func (BoringPolicy) EvalQuery(context.Context, ent.Query) error       { return nil }
+
+type PrivacyMixin struct {
+	mixin.Schema
+}
+
+func (PrivacyMixin) Policy() ent.Policy {
+	return BoringPolicy{}
+}
+
 type WithMixin struct {
 	ent.Schema
 }
@@ -305,6 +350,7 @@ func (WithMixin) Mixin() []ent.Mixin {
 	return []ent.Mixin{
 		TimeMixin{},
 		HooksMixin{},
+		PrivacyMixin{},
 	}
 }
 
@@ -332,6 +378,10 @@ func (WithMixin) Hooks() []ent.Hook {
 	return []ent.Hook{
 		func(ent.Mutator) ent.Mutator { return nil },
 	}
+}
+
+func (WithMixin) Policy() ent.Policy {
+	return BoringPolicy{}
 }
 
 func TestMarshalMixin(t *testing.T) {
@@ -405,5 +455,11 @@ func TestMarshalMixin(t *testing.T) {
 		require.Equal(t, []string{"field"}, schema.Indexes[1].Fields)
 		require.Equal(t, []string{"owner"}, schema.Indexes[1].Edges)
 		require.True(t, schema.Indexes[1].Unique)
+	})
+
+	t.Run("Policy", func(t *testing.T) {
+		require.Len(t, schema.Policy, 2)
+		require.True(t, schema.Policy[0].MixedIn)
+		require.False(t, schema.Policy[1].MixedIn)
 	})
 }

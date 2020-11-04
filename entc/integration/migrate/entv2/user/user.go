@@ -39,6 +39,8 @@ const (
 	FieldState = "state"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldWorkplace holds the string denoting the workplace field in the database.
+	FieldWorkplace = "workplace"
 
 	// EdgeCar holds the string denoting the car edge name in mutations.
 	EdgeCar = "car"
@@ -86,6 +88,7 @@ var Columns = []string{
 	FieldBlob,
 	FieldState,
 	FieldStatus,
+	FieldWorkplace,
 }
 
 var (
@@ -107,6 +110,8 @@ func ValidColumn(column string) bool {
 var (
 	// DefaultMixedString holds the default value on creation for the mixed_string field.
 	DefaultMixedString string
+	// NicknameValidator is a validator for the "nickname" field. It is called by the builders before save.
+	NicknameValidator func(string) error
 	// DefaultPhone holds the default value on creation for the phone field.
 	DefaultPhone string
 	// DefaultTitle holds the default value on creation for the title field.

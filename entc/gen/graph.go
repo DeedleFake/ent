@@ -7,6 +7,7 @@ package gen
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"go/parser"
 	"go/token"
@@ -14,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
-	"text/template"
 	"text/template/parse"
 
 	"github.com/facebook/ent/dialect/sql/schema"
@@ -37,16 +37,26 @@ type (
 		Header string
 		// Storage to support in codegen.
 		Storage *Storage
+
 		// IDType specifies the type of the id field in the codegen.
 		// The supported types are string and int, which also the default.
 		IDType *field.TypeInfo
-		// Template specifies an alternative template to execute or to override
-		// the default. If nil, the default template is used.
+
+		// Templates specifies a list of alternative templates to execute or
+		// to override the default. If nil, the default template is used.
 		//
 		// Note that, additional templates are executed on the Graph object and
 		// the execution output is stored in a file derived by the template name.
-		Template *template.Template
+		Templates []*Template
+
+		// Features defines a list of additional features to add to the codegen phase.
+		// For example, the PrivacyFeature.
+		Features []Feature
+
+		// Hooks holds an optional list of Hooks to apply on the graph before/after the code-generation.
+		Hooks []Hook
 	}
+
 	// Graph holds the nodes/entities of the loaded graph schema. Note that, it doesn't
 	// hold the edges of the graph. Instead, each Type holds the edges for other Types.
 	Graph struct {
@@ -56,7 +66,35 @@ type (
 		// Schemas holds the raw interfaces for the loaded schemas.
 		Schemas []*load.Schema
 	}
+
+	// Generator is the interface that wraps the Generate method.
+	Generator interface {
+		// Generate generates the ent artifacts for the given graph.
+		Generate(*Graph) error
+	}
+
+	// The GenerateFunc type is an adapter to allow the use of ordinary
+	// function as Generator. If f is a function with the appropriate signature,
+	// GenerateFunc(f) is a Generator that calls f.
+	GenerateFunc func(*Graph) error
+
+	// Hook defines the "generate middleware". A function that gets a Generator
+	// and returns a Generator. For example:
+	//
+	//	hook := func(next gen.Generator) gen.Generator {
+	//		return gen.GenerateFunc(func(g *Graph) error {
+	//			fmt.Println("Graph:", g)
+	//			return next.Generate(g)
+	//		})
+	//	}
+	//
+	Hook func(Generator) Generator
 )
+
+// Generate calls f(g).
+func (f GenerateFunc) Generate(g *Graph) error {
+	return f(g)
+}
 
 // NewGraph creates a new Graph for the code generation from the given schema definitions.
 // It fails if one of the schemas is invalid.
@@ -78,26 +116,62 @@ func NewGraph(c *Config, schemas ...*load.Schema) (g *Graph, err error) {
 	for i := range schemas {
 		g.addIndexes(schemas[i])
 	}
+	g.defaults()
 	return
 }
 
+// defaultIDType holds the default value for IDType.
+var defaultIDType = &field.TypeInfo{Type: field.TypeInt}
+
+// defaults sets the default value of the IDType. The IDType field is used
+// by multiple templates. If the IDType wasn't provided, it will fallback to
+// int, or the one used in the schema (if all schemas share the same IDType).
+func (g *Graph) defaults() {
+	if g.IDType != nil {
+		return
+	}
+	if len(g.Nodes) == 0 {
+		g.IDType = defaultIDType
+		return
+	}
+	// Check that all nodes have the same type for the ID field.
+	for i := 0; i < len(g.Nodes)-1; i++ {
+		cid, nid := g.Nodes[i].ID.Type, g.Nodes[i+1].ID.Type
+		if cid.Type != nid.Type {
+			g.IDType = defaultIDType
+			return
+		}
+	}
+	g.IDType = g.Nodes[0].ID.Type
+}
+
 // Gen generates the artifacts for the graph.
-func (g *Graph) Gen() (err error) {
-	defer catch(&err)
+func (g *Graph) Gen() error {
+	var gen Generator = GenerateFunc(generate)
+	for i := len(g.Hooks) - 1; i >= 0; i-- {
+		gen = g.Hooks[i](gen)
+	}
+	return gen.Generate(g)
+}
+
+// generate is the default Generator implementation.
+func generate(g *Graph) error {
 	var (
-		written  []string
+		assets   assets
 		external []GraphTemplate
 	)
 	templates, external = g.templates()
 	for _, n := range g.Nodes {
-		path := filepath.Join(g.Config.Target, n.Package())
-		check(os.MkdirAll(path, os.ModePerm), "create dir %q", path)
+		assets.dirs = append(assets.dirs, filepath.Join(g.Config.Target, n.Package()))
 		for _, tmpl := range Templates {
 			b := bytes.NewBuffer(nil)
-			check(templates.ExecuteTemplate(b, tmpl.Name, n), "execute template %q", tmpl.Name)
-			target := filepath.Join(g.Config.Target, tmpl.Format(n))
-			check(ioutil.WriteFile(target, b.Bytes(), 0644), "write file %s", target)
-			written = append(written, target)
+			if err := templates.ExecuteTemplate(b, tmpl.Name, n); err != nil {
+				return fmt.Errorf("execute template %q: %w", tmpl.Name, err)
+			}
+			assets.files = append(assets.files, file{
+				path:    filepath.Join(g.Config.Target, tmpl.Format(n)),
+				content: b.Bytes(),
+			})
 		}
 	}
 	for _, tmpl := range append(GraphTemplates, external...) {
@@ -105,19 +179,34 @@ func (g *Graph) Gen() (err error) {
 			continue
 		}
 		if dir := filepath.Dir(tmpl.Format); dir != "." {
-			path := filepath.Join(g.Config.Target, dir)
-			check(os.MkdirAll(path, os.ModePerm), "create dir %q", path)
+			assets.dirs = append(assets.dirs, filepath.Join(g.Config.Target, dir))
 		}
 		b := bytes.NewBuffer(nil)
-		check(templates.ExecuteTemplate(b, tmpl.Name, g), "execute template %q", tmpl.Name)
-		target := filepath.Join(g.Config.Target, tmpl.Format)
-		check(ioutil.WriteFile(target, b.Bytes(), 0644), "write file %s", target)
-		written = append(written, target)
+		if err := templates.ExecuteTemplate(b, tmpl.Name, g); err != nil {
+			return fmt.Errorf("execute template %q: %w", tmpl.Name, err)
+		}
+		assets.files = append(assets.files, file{
+			path:    filepath.Join(g.Config.Target, tmpl.Format),
+			content: b.Bytes(),
+		})
+	}
+	for _, f := range AllFeatures {
+		if f.cleanup == nil || g.featureEnabled(f) {
+			continue
+		}
+		if err := f.cleanup(g.Config); err != nil {
+			return fmt.Errorf("cleanup %q feature assets: %w", f.Name, err)
+		}
+	}
+	// Write and format assets only if template execution
+	// finished successfully.
+	if err := assets.write(); err != nil {
+		return err
 	}
 	// We can't run "imports" on files when the state is not completed.
 	// Because, "goimports" will drop undefined package. Therefore, it's
 	// suspended to the end of the writing.
-	return formatFiles(written)
+	return assets.format()
 }
 
 // addNode creates a new Type/Node/Ent to the graph.
@@ -138,9 +227,13 @@ func (g *Graph) addIndexes(schema *load.Schema) {
 // addEdges adds the node edges to the graph.
 func (g *Graph) addEdges(schema *load.Schema) {
 	t, _ := g.typ(schema.Name)
+	seen := make(map[string]struct{}, len(schema.Edges))
 	for _, e := range schema.Edges {
 		typ, ok := g.typ(e.Type)
 		expect(ok, "type %q does not exist for edge", e.Type)
+		_, ok = seen[e.Name]
+		expect(!ok, "%s schema contains multiple %q edges", schema.Name, e.Name)
+		seen[e.Name] = struct{}{}
 		switch {
 		// Assoc only.
 		case !e.Inverse:
@@ -391,6 +484,35 @@ func (g *Graph) SupportMigrate() bool {
 	return g.Storage.SchemaMode.Support(Migrate)
 }
 
+// Snapshot holds the information for storing the schema snapshot.
+type Snapshot struct {
+	Schema   string
+	Package  string
+	Schemas  []*load.Schema
+	Features []string
+}
+
+// MarshalSchema returns a JSON string represents the graph schema in loadable format.
+func (g *Graph) SchemaSnapshot() (string, error) {
+	schemas := make([]*load.Schema, len(g.Nodes))
+	for i := range g.Nodes {
+		schemas[i] = g.Nodes[i].schema
+	}
+	snap := Snapshot{
+		Schema:  g.Schema,
+		Package: g.Package,
+		Schemas: schemas,
+	}
+	for _, feat := range g.Features {
+		snap.Features = append(snap.Features, feat.Name)
+	}
+	out, err := json.Marshal(snap)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
 func (g *Graph) typ(name string) (*Type, bool) {
 	for _, n := range g.Nodes {
 		if name == n.Name {
@@ -402,26 +524,28 @@ func (g *Graph) typ(name string) (*Type, bool) {
 
 // templates returns the template.Template for the code and external templates
 // to execute on the Graph object if provided.
-func (g *Graph) templates() (*template.Template, []GraphTemplate) {
-	if g.Template == nil {
-		return templates, nil
-	}
-	g.Template.Funcs(Funcs)
-	external := make([]GraphTemplate, 0, len(g.Template.Templates()))
-	for _, tmpl := range g.Template.Templates() {
-		name := tmpl.Name()
-		// Check that the template is not defined in the default templates if it's not the root.
-		if templates.Lookup(name) == nil && !parse.IsEmptyTree(tmpl.Root) && !extendExisting(name) {
-			external = append(external, GraphTemplate{
-				Name:   name,
-				Format: snake(name) + ".go",
-			})
+func (g *Graph) templates() (*Template, []GraphTemplate) {
+	initTemplates()
+	external := make([]GraphTemplate, 0, len(g.Templates))
+	for _, rootT := range g.Templates {
+		templates.Funcs(rootT.FuncMap)
+		for _, tmpl := range rootT.Templates() {
+			if parse.IsEmptyTree(tmpl.Root) {
+				continue
+			}
+			name := tmpl.Name()
+			// If the template does not override or extend one of
+			// the builtin templates, generate it in a new file.
+			if templates.Lookup(name) == nil && !extendExisting(name) {
+				external = append(external, GraphTemplate{
+					Name:   name,
+					Format: snake(name) + ".go",
+				})
+			}
+			templates = MustParse(templates.AddParseTree(name, tmpl.Tree))
 		}
 	}
-	for _, tmpl := range templates.Templates() {
-		g.Template = template.Must(g.Template.AddParseTree(tmpl.Name(), tmpl.Tree))
-	}
-	return g.Template, external
+	return templates, external
 }
 
 // ModuleInfo returns the entc binary module version.
@@ -431,6 +555,32 @@ func (Config) ModuleInfo() (m debug.Module) {
 		m = info.Main
 	}
 	return
+}
+
+// FeatureEnabled reports if the given feature name is enabled.
+// It's exported to be used by the template engine as follows:
+//
+//	{{ with $.FeatureEnabled "privacy" }}
+//		...
+//	{{ end }}
+//
+func (c Config) FeatureEnabled(name string) (bool, error) {
+	for _, f := range AllFeatures {
+		if name == f.Name {
+			return c.featureEnabled(f), nil
+		}
+	}
+	return false, fmt.Errorf("unexpected feature name %q", name)
+}
+
+// featureEnabled reports if the given feature-flag is enabled.
+func (c Config) featureEnabled(f Feature) bool {
+	for i := range c.Features {
+		if f.Name == c.Features[i].Name {
+			return true
+		}
+	}
+	return false
 }
 
 // PrepareEnv makes sure the generated directory (environment)
@@ -461,14 +611,37 @@ func PrepareEnv(c *Config) (undo func() error, err error) {
 	return func() error { return ioutil.WriteFile(path, out, 0644) }, nil
 }
 
-// formatFiles runs "goimports" on given paths.
-func formatFiles(paths []string) error {
-	for _, path := range paths {
-		buf, err := ioutil.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("read file %s: %v", path, err)
+type (
+	file struct {
+		path    string
+		content []byte
+	}
+	assets struct {
+		dirs  []string
+		files []file
+	}
+)
+
+// write files and dirs in the assets.
+func (a assets) write() error {
+	for _, dir := range a.dirs {
+		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+			return fmt.Errorf("create dir %q: %w", dir, err)
 		}
-		src, err := imports.Process(path, buf, nil)
+	}
+	for _, file := range a.files {
+		if err := ioutil.WriteFile(file.path, file.content, 0644); err != nil {
+			return fmt.Errorf("write file %q: %w", file.path, err)
+		}
+	}
+	return nil
+}
+
+// format runs "goimports" on all assets.
+func (a assets) format() error {
+	for _, file := range a.files {
+		path := file.path
+		src, err := imports.Process(path, file.content, nil)
 		if err != nil {
 			return fmt.Errorf("format file %s: %v", path, err)
 		}
@@ -479,7 +652,7 @@ func formatFiles(paths []string) error {
 	return nil
 }
 
-// expect panic if the condition is false.
+// expect panics if the condition is false.
 func expect(cond bool, msg string, args ...interface{}) {
 	if !cond {
 		panic(graphError{fmt.Sprintf(msg, args...)})
@@ -512,7 +685,12 @@ func catch(err *error) {
 
 func extendExisting(name string) bool {
 	for _, t := range Templates {
-		if t.Match(name) {
+		if match(t.ExtendPatterns, name) {
+			return true
+		}
+	}
+	for _, t := range GraphTemplates {
+		if match(t.ExtendPatterns, name) {
 			return true
 		}
 	}

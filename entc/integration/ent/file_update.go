@@ -23,14 +23,13 @@ import (
 // FileUpdate is the builder for updating File entities.
 type FileUpdate struct {
 	config
-	hooks      []Hook
-	mutation   *FileMutation
-	predicates []predicate.File
+	hooks    []Hook
+	mutation *FileMutation
 }
 
 // Where adds a new predicate for the builder.
 func (fu *FileUpdate) Where(ps ...predicate.File) *FileUpdate {
-	fu.predicates = append(fu.predicates, ps...)
+	fu.mutation.predicates = append(fu.mutation.predicates, ps...)
 	return fu
 }
 
@@ -98,6 +97,26 @@ func (fu *FileUpdate) SetNillableGroup(s *string) *FileUpdate {
 // ClearGroup clears the value of group.
 func (fu *FileUpdate) ClearGroup() *FileUpdate {
 	fu.mutation.ClearGroup()
+	return fu
+}
+
+// SetOp sets the op field.
+func (fu *FileUpdate) SetOp(b bool) *FileUpdate {
+	fu.mutation.SetOp(b)
+	return fu
+}
+
+// SetNillableOp sets the op field if the given value is not nil.
+func (fu *FileUpdate) SetNillableOp(b *bool) *FileUpdate {
+	if b != nil {
+		fu.SetOp(*b)
+	}
+	return fu
+}
+
+// ClearOp clears the value of op.
+func (fu *FileUpdate) ClearOp() *FileUpdate {
+	fu.mutation.ClearOp()
 	return fu
 }
 
@@ -270,7 +289,7 @@ func (fu *FileUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			},
 		},
 	}
-	if ps := fu.predicates; len(ps) > 0 {
+	if ps := fu.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
 				ps[i](selector)
@@ -322,6 +341,19 @@ func (fu *FileUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		_spec.Fields.Clear = append(_spec.Fields.Clear, &sqlgraph.FieldSpec{
 			Type:   field.TypeString,
 			Column: file.FieldGroup,
+		})
+	}
+	if value, ok := fu.mutation.GetOp(); ok {
+		_spec.Fields.Set = append(_spec.Fields.Set, &sqlgraph.FieldSpec{
+			Type:   field.TypeBool,
+			Value:  value,
+			Column: file.FieldOp,
+		})
+	}
+	if fu.mutation.OpCleared() {
+		_spec.Fields.Clear = append(_spec.Fields.Clear, &sqlgraph.FieldSpec{
+			Type:   field.TypeBool,
+			Column: file.FieldOp,
 		})
 	}
 	if fu.mutation.OwnerCleared() {
@@ -533,6 +565,26 @@ func (fuo *FileUpdateOne) ClearGroup() *FileUpdateOne {
 	return fuo
 }
 
+// SetOp sets the op field.
+func (fuo *FileUpdateOne) SetOp(b bool) *FileUpdateOne {
+	fuo.mutation.SetOp(b)
+	return fuo
+}
+
+// SetNillableOp sets the op field if the given value is not nil.
+func (fuo *FileUpdateOne) SetNillableOp(b *bool) *FileUpdateOne {
+	if b != nil {
+		fuo.SetOp(*b)
+	}
+	return fuo
+}
+
+// ClearOp clears the value of op.
+func (fuo *FileUpdateOne) ClearOp() *FileUpdateOne {
+	fuo.mutation.ClearOp()
+	return fuo
+}
+
 // SetOwnerID sets the owner edge to User by id.
 func (fuo *FileUpdateOne) SetOwnerID(id int) *FileUpdateOne {
 	fuo.mutation.SetOwnerID(id)
@@ -661,11 +713,11 @@ func (fuo *FileUpdateOne) Save(ctx context.Context) (*File, error) {
 
 // SaveX is like Save, but panics if an error occurs.
 func (fuo *FileUpdateOne) SaveX(ctx context.Context) *File {
-	f, err := fuo.Save(ctx)
+	node, err := fuo.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return f
+	return node
 }
 
 // Exec executes the query on the entity.
@@ -691,7 +743,7 @@ func (fuo *FileUpdateOne) check() error {
 	return nil
 }
 
-func (fuo *FileUpdateOne) sqlSave(ctx context.Context) (f *File, err error) {
+func (fuo *FileUpdateOne) sqlSave(ctx context.Context) (_node *File, err error) {
 	_spec := &sqlgraph.UpdateSpec{
 		Node: &sqlgraph.NodeSpec{
 			Table:   file.Table,
@@ -752,6 +804,19 @@ func (fuo *FileUpdateOne) sqlSave(ctx context.Context) (f *File, err error) {
 		_spec.Fields.Clear = append(_spec.Fields.Clear, &sqlgraph.FieldSpec{
 			Type:   field.TypeString,
 			Column: file.FieldGroup,
+		})
+	}
+	if value, ok := fuo.mutation.GetOp(); ok {
+		_spec.Fields.Set = append(_spec.Fields.Set, &sqlgraph.FieldSpec{
+			Type:   field.TypeBool,
+			Value:  value,
+			Column: file.FieldOp,
+		})
+	}
+	if fuo.mutation.OpCleared() {
+		_spec.Fields.Clear = append(_spec.Fields.Clear, &sqlgraph.FieldSpec{
+			Type:   field.TypeBool,
+			Column: file.FieldOp,
 		})
 	}
 	if fuo.mutation.OwnerCleared() {
@@ -878,9 +943,9 @@ func (fuo *FileUpdateOne) sqlSave(ctx context.Context) (f *File, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	f = &File{config: fuo.config}
-	_spec.Assign = f.assignValues
-	_spec.ScanValues = f.scanValues()
+	_node = &File{config: fuo.config}
+	_spec.Assign = _node.assignValues
+	_spec.ScanValues = _node.scanValues()
 	if err = sqlgraph.UpdateNode(ctx, fuo.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{file.Label}
@@ -889,5 +954,5 @@ func (fuo *FileUpdateOne) sqlSave(ctx context.Context) (f *File, err error) {
 		}
 		return nil, err
 	}
-	return f, nil
+	return _node, nil
 }

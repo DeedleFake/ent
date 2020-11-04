@@ -22,14 +22,13 @@ import (
 // FileTypeUpdate is the builder for updating FileType entities.
 type FileTypeUpdate struct {
 	config
-	hooks      []Hook
-	mutation   *FileTypeMutation
-	predicates []predicate.FileType
+	hooks    []Hook
+	mutation *FileTypeMutation
 }
 
 // Where adds a new predicate for the builder.
 func (ftu *FileTypeUpdate) Where(ps ...predicate.FileType) *FileTypeUpdate {
-	ftu.predicates = append(ftu.predicates, ps...)
+	ftu.mutation.predicates = append(ftu.mutation.predicates, ps...)
 	return ftu
 }
 
@@ -199,7 +198,7 @@ func (ftu *FileTypeUpdate) gremlin() *dsl.Traversal {
 	}
 	constraints := make([]*constraint, 0, 2)
 	v := g.V().HasLabel(filetype.Label)
-	for _, p := range ftu.predicates {
+	for _, p := range ftu.mutation.predicates {
 		p(v)
 	}
 	var (
@@ -366,11 +365,11 @@ func (ftuo *FileTypeUpdateOne) Save(ctx context.Context) (*FileType, error) {
 
 // SaveX is like Save, but panics if an error occurs.
 func (ftuo *FileTypeUpdateOne) SaveX(ctx context.Context) *FileType {
-	ft, err := ftuo.Save(ctx)
+	node, err := ftuo.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return ft
+	return node
 }
 
 // Exec executes the query on the entity.

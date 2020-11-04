@@ -72,8 +72,12 @@ func (fq *FileQuery) QueryOwner() *UserQuery {
 		if err := fq.prepareQuery(ctx); err != nil {
 			return nil, err
 		}
+		selector := fq.sqlQuery()
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
 		step := sqlgraph.NewStep(
-			sqlgraph.From(file.Table, file.FieldID, fq.sqlQuery()),
+			sqlgraph.From(file.Table, file.FieldID, selector),
 			sqlgraph.To(user.Table, user.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, file.OwnerTable, file.OwnerColumn),
 		)
@@ -90,8 +94,12 @@ func (fq *FileQuery) QueryType() *FileTypeQuery {
 		if err := fq.prepareQuery(ctx); err != nil {
 			return nil, err
 		}
+		selector := fq.sqlQuery()
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
 		step := sqlgraph.NewStep(
-			sqlgraph.From(file.Table, file.FieldID, fq.sqlQuery()),
+			sqlgraph.From(file.Table, file.FieldID, selector),
 			sqlgraph.To(filetype.Table, filetype.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, file.TypeTable, file.TypeColumn),
 		)
@@ -108,8 +116,12 @@ func (fq *FileQuery) QueryField() *FieldTypeQuery {
 		if err := fq.prepareQuery(ctx); err != nil {
 			return nil, err
 		}
+		selector := fq.sqlQuery()
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
 		step := sqlgraph.NewStep(
-			sqlgraph.From(file.Table, file.FieldID, fq.sqlQuery()),
+			sqlgraph.From(file.Table, file.FieldID, selector),
 			sqlgraph.To(fieldtype.Table, fieldtype.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, file.FieldTable, file.FieldColumn),
 		)
@@ -121,23 +133,23 @@ func (fq *FileQuery) QueryField() *FieldTypeQuery {
 
 // First returns the first File entity in the query. Returns *NotFoundError when no file was found.
 func (fq *FileQuery) First(ctx context.Context) (*File, error) {
-	fs, err := fq.Limit(1).All(ctx)
+	nodes, err := fq.Limit(1).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(fs) == 0 {
+	if len(nodes) == 0 {
 		return nil, &NotFoundError{file.Label}
 	}
-	return fs[0], nil
+	return nodes[0], nil
 }
 
 // FirstX is like First, but panics if an error occurs.
 func (fq *FileQuery) FirstX(ctx context.Context) *File {
-	f, err := fq.First(ctx)
+	node, err := fq.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
 	}
-	return f
+	return node
 }
 
 // FirstID returns the first File id in the query. Returns *NotFoundError when no id was found.
@@ -153,8 +165,8 @@ func (fq *FileQuery) FirstID(ctx context.Context) (id int, err error) {
 	return ids[0], nil
 }
 
-// FirstXID is like FirstID, but panics if an error occurs.
-func (fq *FileQuery) FirstXID(ctx context.Context) int {
+// FirstIDX is like FirstID, but panics if an error occurs.
+func (fq *FileQuery) FirstIDX(ctx context.Context) int {
 	id, err := fq.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -164,13 +176,13 @@ func (fq *FileQuery) FirstXID(ctx context.Context) int {
 
 // Only returns the only File entity in the query, returns an error if not exactly one entity was returned.
 func (fq *FileQuery) Only(ctx context.Context) (*File, error) {
-	fs, err := fq.Limit(2).All(ctx)
+	nodes, err := fq.Limit(2).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	switch len(fs) {
+	switch len(nodes) {
 	case 1:
-		return fs[0], nil
+		return nodes[0], nil
 	case 0:
 		return nil, &NotFoundError{file.Label}
 	default:
@@ -180,11 +192,11 @@ func (fq *FileQuery) Only(ctx context.Context) (*File, error) {
 
 // OnlyX is like Only, but panics if an error occurs.
 func (fq *FileQuery) OnlyX(ctx context.Context) *File {
-	f, err := fq.Only(ctx)
+	node, err := fq.Only(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return f
+	return node
 }
 
 // OnlyID returns the only File id in the query, returns an error if not exactly one id was returned.
@@ -223,11 +235,11 @@ func (fq *FileQuery) All(ctx context.Context) ([]*File, error) {
 
 // AllX is like All, but panics if an error occurs.
 func (fq *FileQuery) AllX(ctx context.Context) []*File {
-	fs, err := fq.All(ctx)
+	nodes, err := fq.All(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return fs
+	return nodes
 }
 
 // IDs executes the query and returns a list of File ids.
@@ -285,6 +297,9 @@ func (fq *FileQuery) ExistX(ctx context.Context) bool {
 // Clone returns a duplicate of the query builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
 func (fq *FileQuery) Clone() *FileQuery {
+	if fq == nil {
+		return nil
+	}
 	return &FileQuery{
 		config:     fq.config,
 		limit:      fq.limit,
@@ -292,6 +307,9 @@ func (fq *FileQuery) Clone() *FileQuery {
 		order:      append([]OrderFunc{}, fq.order...),
 		unique:     append([]string{}, fq.unique...),
 		predicates: append([]predicate.File{}, fq.predicates...),
+		withOwner:  fq.withOwner.Clone(),
+		withType:   fq.withType.Clone(),
+		withField:  fq.withField.Clone(),
 		// clone intermediate query.
 		sql:  fq.sql.Clone(),
 		path: fq.path,
@@ -490,6 +508,7 @@ func (fq *FileQuery) sqlAll(ctx context.Context) ([]*File, error) {
 		for i := range nodes {
 			fks = append(fks, nodes[i].ID)
 			nodeids[nodes[i].ID] = nodes[i]
+			nodes[i].Edges.Field = []*FieldType{}
 		}
 		query.withFKs = true
 		query.Where(predicate.FieldType(func(s *sql.Selector) {
@@ -557,7 +576,7 @@ func (fq *FileQuery) querySpec() *sqlgraph.QuerySpec {
 	if ps := fq.order; len(ps) > 0 {
 		_spec.Order = func(selector *sql.Selector) {
 			for i := range ps {
-				ps[i](selector)
+				ps[i](selector, file.ValidColumn)
 			}
 		}
 	}
@@ -576,7 +595,7 @@ func (fq *FileQuery) sqlQuery() *sql.Selector {
 		p(selector)
 	}
 	for _, p := range fq.order {
-		p(selector)
+		p(selector, file.ValidColumn)
 	}
 	if offset := fq.offset; offset != nil {
 		// limit is mandatory for offset clause. We start
@@ -816,8 +835,12 @@ func (fgb *FileGroupBy) sqlScan(ctx context.Context, v interface{}) error {
 			return &ValidationError{Name: f, err: fmt.Errorf("invalid field %q for group-by", f)}
 		}
 	}
+	selector := fgb.sqlQuery()
+	if err := selector.Err(); err != nil {
+		return err
+	}
 	rows := &sql.Rows{}
-	query, args := fgb.sqlQuery().Query()
+	query, args := selector.Query()
 	if err := fgb.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
@@ -830,7 +853,7 @@ func (fgb *FileGroupBy) sqlQuery() *sql.Selector {
 	columns := make([]string, 0, len(fgb.fields)+len(fgb.fns))
 	columns = append(columns, fgb.fields...)
 	for _, fn := range fgb.fns {
-		columns = append(columns, fn(selector))
+		columns = append(columns, fn(selector, file.ValidColumn))
 	}
 	return selector.Select(columns...).GroupBy(fgb.fields...)
 }

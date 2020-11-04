@@ -17,19 +17,20 @@ import (
 
 // Schema represents an ent.Schema that was loaded from a complied user package.
 type Schema struct {
-	Name    string      `json:"name,omitempty"`
-	Config  ent.Config  `json:"config,omitempty"`
-	Edges   []*Edge     `json:"edges,omitempty"`
-	Fields  []*Field    `json:"fields,omitempty"`
-	Indexes []*Index    `json:"indexes,omitempty"`
-	Hooks   []*Position `json:"hooks,omitempty"`
-	Policy  bool        `json:"policy,omitempty"`
+	Name        string                 `json:"name,omitempty"`
+	Config      ent.Config             `json:"config,omitempty"`
+	Edges       []*Edge                `json:"edges,omitempty"`
+	Fields      []*Field               `json:"fields,omitempty"`
+	Indexes     []*Index               `json:"indexes,omitempty"`
+	Hooks       []*Position            `json:"hooks,omitempty"`
+	Policy      []*Position            `json:"policy,omitempty"`
+	Annotations map[string]interface{} `json:"annotations,omitempty"`
 }
 
-// Position describes a field position in the schema.
+// Position describes a position in the schema.
 type Position struct {
-	Index      int  // Field index in the field list.
-	MixedIn    bool // Indicates if the field was mixed-in.
+	Index      int  // Index in the field/hook list.
+	MixedIn    bool // Indicates if the schema object was mixed-in.
 	MixinIndex int  // Mixin index in the mixin list.
 }
 
@@ -153,11 +154,16 @@ func NewIndex(idx *index.Descriptor) *Index {
 // that can be decoded into the Schema object object.
 func MarshalSchema(schema ent.Interface) (b []byte, err error) {
 	s := &Schema{
-		Config: schema.Config(),
-		Name:   indirect(reflect.TypeOf(schema)).Name(),
+		Config:      schema.Config(),
+		Name:        indirect(reflect.TypeOf(schema)).Name(),
+		Annotations: make(map[string]interface{}),
 	}
 	if err := s.loadMixin(schema); err != nil {
 		return nil, fmt.Errorf("schema %q: %v", s.Name, err)
+	}
+	// Schema annotations override mixed-in annotations.
+	for _, at := range schema.Annotations() {
+		s.Annotations[at.Name()] = at
 	}
 	if err := s.loadFields(schema); err != nil {
 		return nil, fmt.Errorf("schema %q: %v", s.Name, err)
@@ -248,6 +254,19 @@ func (s *Schema) loadMixin(schema ent.Interface) error {
 				MixinIndex: i,
 			})
 		}
+		policy, err := safePolicy(mx)
+		if err != nil {
+			return fmt.Errorf("mixin %q: %v", name, err)
+		}
+		if policy != nil {
+			s.Policy = append(s.Policy, &Position{
+				MixedIn:    true,
+				MixinIndex: i,
+			})
+		}
+		for _, at := range mx.Annotations() {
+			s.Annotations[at.Name()] = at
+		}
 	}
 	return nil
 }
@@ -288,7 +307,9 @@ func (s *Schema) loadPolicy(schema ent.Interface) error {
 	if err != nil {
 		return err
 	}
-	s.Policy = policy != nil
+	if policy != nil {
+		s.Policy = append(s.Policy, &Position{})
+	}
 	return nil
 }
 
@@ -365,7 +386,7 @@ func safeHooks(schema interface{ Hooks() []ent.Hook }) (hooks []ent.Hook, err er
 }
 
 // safePolicy wraps the schema.Policy method with recover to ensure no panics in marshaling.
-func safePolicy(schema ent.Interface) (policy ent.Policy, err error) {
+func safePolicy(schema interface{ Policy() ent.Policy }) (policy ent.Policy, err error) {
 	defer func() {
 		if v := recover(); v != nil {
 			err = fmt.Errorf("schema.Policy panics: %v", v)

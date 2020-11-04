@@ -20,14 +20,13 @@ import (
 // NodeUpdate is the builder for updating Node entities.
 type NodeUpdate struct {
 	config
-	hooks      []Hook
-	mutation   *NodeMutation
-	predicates []predicate.Node
+	hooks    []Hook
+	mutation *NodeMutation
 }
 
 // Where adds a new predicate for the builder.
 func (nu *NodeUpdate) Where(ps ...predicate.Node) *NodeUpdate {
-	nu.predicates = append(nu.predicates, ps...)
+	nu.mutation.predicates = append(nu.mutation.predicates, ps...)
 	return nu
 }
 
@@ -172,7 +171,7 @@ func (nu *NodeUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			},
 		},
 	}
-	if ps := nu.predicates; len(ps) > 0 {
+	if ps := nu.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
 				ps[i](selector)
@@ -410,11 +409,11 @@ func (nuo *NodeUpdateOne) Save(ctx context.Context) (*Node, error) {
 
 // SaveX is like Save, but panics if an error occurs.
 func (nuo *NodeUpdateOne) SaveX(ctx context.Context) *Node {
-	n, err := nuo.Save(ctx)
+	node, err := nuo.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return n
+	return node
 }
 
 // Exec executes the query on the entity.
@@ -430,7 +429,7 @@ func (nuo *NodeUpdateOne) ExecX(ctx context.Context) {
 	}
 }
 
-func (nuo *NodeUpdateOne) sqlSave(ctx context.Context) (n *Node, err error) {
+func (nuo *NodeUpdateOne) sqlSave(ctx context.Context) (_node *Node, err error) {
 	_spec := &sqlgraph.UpdateSpec{
 		Node: &sqlgraph.NodeSpec{
 			Table:   node.Table,
@@ -549,9 +548,9 @@ func (nuo *NodeUpdateOne) sqlSave(ctx context.Context) (n *Node, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	n = &Node{config: nuo.config}
-	_spec.Assign = n.assignValues
-	_spec.ScanValues = n.scanValues()
+	_node = &Node{config: nuo.config}
+	_spec.Assign = _node.assignValues
+	_spec.ScanValues = _node.scanValues()
 	if err = sqlgraph.UpdateNode(ctx, nuo.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{node.Label}
@@ -560,5 +559,5 @@ func (nuo *NodeUpdateOne) sqlSave(ctx context.Context) (n *Node, err error) {
 		}
 		return nil, err
 	}
-	return n, nil
+	return _node, nil
 }

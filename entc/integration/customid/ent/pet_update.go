@@ -22,14 +22,13 @@ import (
 // PetUpdate is the builder for updating Pet entities.
 type PetUpdate struct {
 	config
-	hooks      []Hook
-	mutation   *PetMutation
-	predicates []predicate.Pet
+	hooks    []Hook
+	mutation *PetMutation
 }
 
 // Where adds a new predicate for the builder.
 func (pu *PetUpdate) Where(ps ...predicate.Pet) *PetUpdate {
-	pu.predicates = append(pu.predicates, ps...)
+	pu.mutation.predicates = append(pu.mutation.predicates, ps...)
 	return pu
 }
 
@@ -222,7 +221,7 @@ func (pu *PetUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			},
 		},
 	}
-	if ps := pu.predicates; len(ps) > 0 {
+	if ps := pu.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
 				ps[i](selector)
@@ -583,11 +582,11 @@ func (puo *PetUpdateOne) Save(ctx context.Context) (*Pet, error) {
 
 // SaveX is like Save, but panics if an error occurs.
 func (puo *PetUpdateOne) SaveX(ctx context.Context) *Pet {
-	pe, err := puo.Save(ctx)
+	node, err := puo.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return pe
+	return node
 }
 
 // Exec executes the query on the entity.
@@ -603,7 +602,7 @@ func (puo *PetUpdateOne) ExecX(ctx context.Context) {
 	}
 }
 
-func (puo *PetUpdateOne) sqlSave(ctx context.Context) (pe *Pet, err error) {
+func (puo *PetUpdateOne) sqlSave(ctx context.Context) (_node *Pet, err error) {
 	_spec := &sqlgraph.UpdateSpec{
 		Node: &sqlgraph.NodeSpec{
 			Table:   pet.Table,
@@ -797,9 +796,9 @@ func (puo *PetUpdateOne) sqlSave(ctx context.Context) (pe *Pet, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	pe = &Pet{config: puo.config}
-	_spec.Assign = pe.assignValues
-	_spec.ScanValues = pe.scanValues()
+	_node = &Pet{config: puo.config}
+	_spec.Assign = _node.assignValues
+	_spec.ScanValues = _node.scanValues()
 	if err = sqlgraph.UpdateNode(ctx, puo.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{pet.Label}
@@ -808,5 +807,5 @@ func (puo *PetUpdateOne) sqlSave(ctx context.Context) (pe *Pet, err error) {
 		}
 		return nil, err
 	}
-	return pe, nil
+	return _node, nil
 }

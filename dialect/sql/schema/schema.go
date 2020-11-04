@@ -100,7 +100,7 @@ func (t *Table) column(name string) (*Column, bool) {
 // index returns a table index by its name.
 func (t *Table) index(name string) (*Index, bool) {
 	for _, idx := range t.Indexes {
-		if idx.Name == name {
+		if name == idx.Name || name == idx.realname {
 			return idx, true
 		}
 		// Same as below, there are cases where the index name
@@ -165,7 +165,11 @@ func (c *Column) PrimaryKey() bool { return c.Key == PrimaryKey }
 func (c *Column) ConvertibleTo(d *Column) bool {
 	switch {
 	case c.Type == d.Type:
-		return c.Size <= d.Size
+		if c.Size != 0 && d.Size != 0 {
+			// Types match and have a size constraint.
+			return c.Size <= d.Size
+		}
+		return true
 	case c.IntType() && d.IntType() || c.UintType() && d.UintType():
 		return c.Type <= d.Type
 	case c.UintType() && d.IntType():
@@ -245,7 +249,7 @@ func (c *Column) defaultValue(b *sql.ColumnBuilder) {
 			attr += strconv.FormatBool(v)
 		case string:
 			// Escape single quote by replacing each with 2.
-			attr += fmt.Sprintf("'%s'", strings.Replace(v, "'", "''", -1))
+			attr += fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
 		default:
 			attr += fmt.Sprint(v)
 		}
@@ -357,7 +361,7 @@ func (r ReferenceOption) ConstName() string {
 	if r == NoAction {
 		return ""
 	}
-	return strings.Replace(strings.Title(strings.ToLower(string(r))), " ", "", -1)
+	return strings.ReplaceAll(strings.Title(strings.ToLower(string(r))), " ", "")
 }
 
 // Index definition for table index.

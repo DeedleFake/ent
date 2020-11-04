@@ -42,7 +42,7 @@ backwards-compatibility with previous versions of ent.
 
 {{ $hooks := 0 }}
 {{ range $n := $.Nodes }}
-	{{ $numHooks := $n.NumHooks }}{{ if $n.HasPolicy }}{{ $numHooks = add $numHooks 1 }}{{ end }}
+	{{ $numHooks := $n.NumHooks }}{{ if $n.NumPolicy }}{{ $numHooks = add $numHooks 1 }}{{ end }}
 	{{ $hooks = add $hooks $numHooks }}
 {{ end }}
 {{ $rtpkg := false }}{{ if hasField $ "Scope" }}{{ $rtpkg = eq $.Scope.Package "runtime" }}{{ end }}
@@ -71,14 +71,17 @@ import (
 	{{- end }}
 	{{- range $n := $.Nodes }}
 		"{{ $.Config.Package }}/{{ $n.Package }}"
+		{{- /* Import external packages */}}
+		{{- template "import/types" $n }}
 	{{- end }}
 
 	"github.com/facebook/ent"
+	"github.com/facebook/ent/privacy"
 )
 
 
-// The init function reads all schema descriptors with runtime
-// code (default values, validators or hooks) and stitches it
+// The init function reads all schema descriptors with runtime code
+// (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
 {{- range $n := $.Nodes }}
@@ -87,11 +90,12 @@ func init() {
 	{{- with $n.RuntimeMixin }}
 		{{ $pkg }}Mixin := {{ $schema }}.{{ $n.Name }}{}.Mixin()
 	{{- end }}
-	{{- if $n.HasPolicy }}
-		{{ print $pkg ".Policy" }} = {{ $schema }}.{{ $n.Name }}{}.Policy()
-		{{ print $pkg ".Hooks" }}[0] = func(next ent.Mutator) ent.Mutator {
+	{{- with $policies := $n.PolicyPositions }}
+		{{- /* policies defined in schema and mixins. */}}
+		{{ $pkg }}.Policy = privacy.NewPolicies({{ range $idx := $n.MixedInPolicies }}{{ $pkg }}Mixin[{{ $idx }}],{{ end }}{{ $schema }}.{{ $n.Name }}{})
+		{{ $pkg }}.Hooks[0] = func(next ent.Mutator) ent.Mutator {
 			return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-				if err := {{ print $pkg ".Policy" }}.EvalMutation(ctx, m); err != nil {
+				if err := {{ $pkg }}.Policy.EvalMutation(ctx, m); err != nil {
 					return nil, err
 				}
 				return next.Mutate(ctx, m)
@@ -102,7 +106,7 @@ func init() {
         {{- /* Hooks defined in schema mixins. */}}
 		{{- with $idx := $n.MixedInHooks }}
 			{{- range $i := $idx }}
-                {{ print $pkg "MixinHooks" $i }} := {{ $pkg }}Mixin[{{ $i }}].(interface{ Hooks() []ent.Hook }).Hooks()
+				{{ print $pkg "MixinHooks" $i }} := {{ $pkg }}Mixin[{{ $i }}].Hooks()
 			{{- end }}
 		{{- end }}
         {{- /* If there are hooks defined in the schema. */}}
@@ -111,7 +115,7 @@ func init() {
 			{{ print $pkg "Hooks" }} := {{ $schema }}.{{ $n.Name }}{}.Hooks()
 		{{- end }}
 		{{- range $i, $p := $hooks }}
-            {{- if $n.HasPolicy }}
+			{{- if $n.NumPolicy }}
 				{{ $i = add $i 1 }}
 			{{- end }}
 			{{- if $p.MixedIn }}
@@ -187,5 +191,4 @@ func init() {
 {{- end }}
 {{- end }}
 }
-
 {{ end }}

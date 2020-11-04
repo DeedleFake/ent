@@ -34,7 +34,12 @@ type Client struct {
 		// {{ $n.Name }} is the client for interacting with the {{ $n.Name }} builders.
 		{{ $n.Name }} *{{ $n.Name }}Client
 	{{- end }}
-	{{ template "client/fields/additional" $ }}
+	{{- template "client/fields/additional" $ }}
+	{{- with $tmpls := matchTemplate "client/fields/additional/*" }}
+		{{- range $tmpl := $tmpls }}
+			{{- xtemplate $tmpl $ }}
+		{{- end }}
+	{{- end }}
 }
 
 // NewClient creates a new client configured with the given options.
@@ -125,7 +130,7 @@ func (c *Client) Use(hooks ...Hook) {
 }
 
 
-{{ range $_, $n := $.Nodes }}
+{{ range $n := $.Nodes }}
 {{ $client := print $n.Name "Client" }}
 // {{ $client }} is a client for the {{ $n.Name }} schema.
 type {{ $client }} struct {
@@ -205,11 +210,11 @@ func (c *{{ $client }}) Get(ctx context.Context, id {{ $n.ID.Type }}) (*{{ $n.Na
 
 // GetX is like Get, but panics if an error occurs.
 func (c *{{ $client }}) GetX(ctx context.Context, id {{ $n.ID.Type }}) *{{ $n.Name }} {
-	{{ $rec }}, err := c.Get(ctx, id)
+	obj, err := c.Get(ctx, id)
 	if err != nil {
 		panic(err)
 	}
-	return {{ $rec }}
+	return obj
 }
 
 {{ range $_, $e := $n.Edges }}
@@ -230,7 +235,7 @@ func (c *{{ $client }}) Query{{ pascal $e.Name }}({{ $rec }} *{{ $n.Name }}) *{{
 
 // Hooks returns the client hooks.
 func (c *{{ $client }}) Hooks() []Hook {
-	{{- if or $n.NumHooks $n.HasPolicy }}
+	{{- if or $n.NumHooks $n.NumPolicy }}
 		hooks := c.hooks.{{ $n.Name }}
 		return append(hooks[:len(hooks):len(hooks)], {{ $n.Package }}.Hooks[:]...)
 	{{- else }}

@@ -58,23 +58,23 @@ func (tq *TaskQuery) Order(o ...OrderFunc) *TaskQuery {
 
 // First returns the first Task entity in the query. Returns *NotFoundError when no task was found.
 func (tq *TaskQuery) First(ctx context.Context) (*Task, error) {
-	ts, err := tq.Limit(1).All(ctx)
+	nodes, err := tq.Limit(1).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(ts) == 0 {
+	if len(nodes) == 0 {
 		return nil, &NotFoundError{task.Label}
 	}
-	return ts[0], nil
+	return nodes[0], nil
 }
 
 // FirstX is like First, but panics if an error occurs.
 func (tq *TaskQuery) FirstX(ctx context.Context) *Task {
-	t, err := tq.First(ctx)
+	node, err := tq.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
 	}
-	return t
+	return node
 }
 
 // FirstID returns the first Task id in the query. Returns *NotFoundError when no id was found.
@@ -90,8 +90,8 @@ func (tq *TaskQuery) FirstID(ctx context.Context) (id int, err error) {
 	return ids[0], nil
 }
 
-// FirstXID is like FirstID, but panics if an error occurs.
-func (tq *TaskQuery) FirstXID(ctx context.Context) int {
+// FirstIDX is like FirstID, but panics if an error occurs.
+func (tq *TaskQuery) FirstIDX(ctx context.Context) int {
 	id, err := tq.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -101,13 +101,13 @@ func (tq *TaskQuery) FirstXID(ctx context.Context) int {
 
 // Only returns the only Task entity in the query, returns an error if not exactly one entity was returned.
 func (tq *TaskQuery) Only(ctx context.Context) (*Task, error) {
-	ts, err := tq.Limit(2).All(ctx)
+	nodes, err := tq.Limit(2).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	switch len(ts) {
+	switch len(nodes) {
 	case 1:
-		return ts[0], nil
+		return nodes[0], nil
 	case 0:
 		return nil, &NotFoundError{task.Label}
 	default:
@@ -117,11 +117,11 @@ func (tq *TaskQuery) Only(ctx context.Context) (*Task, error) {
 
 // OnlyX is like Only, but panics if an error occurs.
 func (tq *TaskQuery) OnlyX(ctx context.Context) *Task {
-	t, err := tq.Only(ctx)
+	node, err := tq.Only(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return t
+	return node
 }
 
 // OnlyID returns the only Task id in the query, returns an error if not exactly one id was returned.
@@ -160,11 +160,11 @@ func (tq *TaskQuery) All(ctx context.Context) ([]*Task, error) {
 
 // AllX is like All, but panics if an error occurs.
 func (tq *TaskQuery) AllX(ctx context.Context) []*Task {
-	ts, err := tq.All(ctx)
+	nodes, err := tq.All(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return ts
+	return nodes
 }
 
 // IDs executes the query and returns a list of Task ids.
@@ -222,6 +222,9 @@ func (tq *TaskQuery) ExistX(ctx context.Context) bool {
 // Clone returns a duplicate of the query builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
 func (tq *TaskQuery) Clone() *TaskQuery {
+	if tq == nil {
+		return nil
+	}
 	return &TaskQuery{
 		config:     tq.config,
 		limit:      tq.limit,
@@ -366,7 +369,7 @@ func (tq *TaskQuery) querySpec() *sqlgraph.QuerySpec {
 	if ps := tq.order; len(ps) > 0 {
 		_spec.Order = func(selector *sql.Selector) {
 			for i := range ps {
-				ps[i](selector)
+				ps[i](selector, task.ValidColumn)
 			}
 		}
 	}
@@ -385,7 +388,7 @@ func (tq *TaskQuery) sqlQuery() *sql.Selector {
 		p(selector)
 	}
 	for _, p := range tq.order {
-		p(selector)
+		p(selector, task.ValidColumn)
 	}
 	if offset := tq.offset; offset != nil {
 		// limit is mandatory for offset clause. We start
@@ -625,8 +628,12 @@ func (tgb *TaskGroupBy) sqlScan(ctx context.Context, v interface{}) error {
 			return &ValidationError{Name: f, err: fmt.Errorf("invalid field %q for group-by", f)}
 		}
 	}
+	selector := tgb.sqlQuery()
+	if err := selector.Err(); err != nil {
+		return err
+	}
 	rows := &sql.Rows{}
-	query, args := tgb.sqlQuery().Query()
+	query, args := selector.Query()
 	if err := tgb.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
@@ -639,7 +646,7 @@ func (tgb *TaskGroupBy) sqlQuery() *sql.Selector {
 	columns := make([]string, 0, len(tgb.fields)+len(tgb.fns))
 	columns = append(columns, tgb.fields...)
 	for _, fn := range tgb.fns {
-		columns = append(columns, fn(selector))
+		columns = append(columns, fn(selector, task.ValidColumn))
 	}
 	return selector.Select(columns...).GroupBy(tgb.fields...)
 }

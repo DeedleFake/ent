@@ -21,15 +21,16 @@ import (
 type {{ $.Name }} struct {
 	config {{ template "model/omittags" $ }}
 	// ID of the ent.
-	ID {{ $.ID.Type }} `{{ $.ID.StructTag }}`
-	{{- range $_, $f := $.Fields }}
+	ID {{ $.ID.Type }} {{ with $.Annotations.Fields.StructTag.id }}`{{ . }}`{{ else }}`{{ $.ID.StructTag }}`{{ end }}
+	{{- range $f := $.Fields }}
+		{{- $tag := $f.StructTag }}{{ with $tags := $.Annotations.Fields.StructTag }}{{ with index $tags $f.Name }}{{ $tag = . }}{{ end }}{{ end }}
 		// {{ $f.StructField }} holds the value of the "{{ $f.Name }}" field.
-    	{{ $f.StructField }} {{ if $f.Nillable }}*{{ end }}{{ $f.Type }} {{ if not $f.Sensitive }}`{{ $f.StructTag }}`{{ else }}{{ template "model/omittags" $ }}{{ end }}
+		{{ $f.StructField }} {{ if $f.Nillable }}*{{ end }}{{ $f.Type }} {{ if not $f.Sensitive }}`{{ $tag }}`{{ else }}{{ template "model/omittags" $ }}{{ end }}
 	{{- end }}
 	{{- with $.Edges }}
 		// Edges holds the relations/edges for other nodes in the graph.
 		// The values are being populated by the {{ $.Name }}Query when eager-loading is set.
-		Edges {{ $.Name }}Edges `json:"edges"`
+		Edges {{ $.Name }}Edges {{ template "model/edgetags" $ }}
 	{{- end -}}
 	{{- /* Additional fields to add by the storage driver. */}}
 	{{- $tmpl := printf "dialect/%s/model/fields" $.Storage }}
@@ -76,7 +77,7 @@ type {{ $.Name }}Edges struct {
 
 {{ $receiver := $.Receiver }}
 
-{{ range $_, $e := $.Edges }}
+{{ range $e := $.Edges }}
 	{{ $func := print "Query" $e.StructField }}
 	// {{ $func }} queries the {{ $e.Name }} edge of the {{ $.Name }}.
 	func ({{ $receiver }} *{{ $.Name }}) {{ $func }}() *{{ $e.Type.QueryName }} {
@@ -155,8 +156,11 @@ func ({{ $receiver }} {{ $slice }}) config(cfg config) {
 }
 {{ end }}
 
+{{/* A template for generating the tag of the Edges struct-field. */}}
+{{ define "model/edgetags" }}{{ with $.Annotations.Edges.StructTag }}`{{ . }}`{{ else }}`json:"edges"`{{ end }}{{ end }}
+
 {{/* A template for omitting struct-tags. */}}
 {{ define "model/omittags" }}{{ with $.TagTypes }}`{{ range $i, $t := . }}{{ if ne $i 0 }} {{ end }}{{ $t }}:"-"{{ end }}`{{ end }}{{ end }}
 
-{{/* A template that can be overrided in order to add additional fields to the each type.*/}}
+{{/* A template that can be overridden in order to add additional fields to the each type.*/}}
 {{ define "model/fields/additional" }}{{end}}

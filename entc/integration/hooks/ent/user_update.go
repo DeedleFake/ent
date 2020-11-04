@@ -21,14 +21,13 @@ import (
 // UserUpdate is the builder for updating User entities.
 type UserUpdate struct {
 	config
-	hooks      []Hook
-	mutation   *UserMutation
-	predicates []predicate.User
+	hooks    []Hook
+	mutation *UserMutation
 }
 
 // Where adds a new predicate for the builder.
 func (uu *UserUpdate) Where(ps ...predicate.User) *UserUpdate {
-	uu.predicates = append(uu.predicates, ps...)
+	uu.mutation.predicates = append(uu.mutation.predicates, ps...)
 	return uu
 }
 
@@ -250,7 +249,7 @@ func (uu *UserUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			},
 		},
 	}
-	if ps := uu.predicates; len(ps) > 0 {
+	if ps := uu.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
 				ps[i](selector)
@@ -646,11 +645,11 @@ func (uuo *UserUpdateOne) Save(ctx context.Context) (*User, error) {
 
 // SaveX is like Save, but panics if an error occurs.
 func (uuo *UserUpdateOne) SaveX(ctx context.Context) *User {
-	u, err := uuo.Save(ctx)
+	node, err := uuo.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return u
+	return node
 }
 
 // Exec executes the query on the entity.
@@ -666,7 +665,7 @@ func (uuo *UserUpdateOne) ExecX(ctx context.Context) {
 	}
 }
 
-func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (u *User, err error) {
+func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	_spec := &sqlgraph.UpdateSpec{
 		Node: &sqlgraph.NodeSpec{
 			Table:   user.Table,
@@ -866,9 +865,9 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (u *User, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	u = &User{config: uuo.config}
-	_spec.Assign = u.assignValues
-	_spec.ScanValues = u.scanValues()
+	_node = &User{config: uuo.config}
+	_spec.Assign = _node.assignValues
+	_spec.ScanValues = _node.scanValues()
 	if err = sqlgraph.UpdateNode(ctx, uuo.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{user.Label}
@@ -877,5 +876,5 @@ func (uuo *UserUpdateOne) sqlSave(ctx context.Context) (u *User, err error) {
 		}
 		return nil, err
 	}
-	return u, nil
+	return _node, nil
 }

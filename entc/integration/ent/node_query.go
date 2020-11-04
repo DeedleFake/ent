@@ -68,8 +68,12 @@ func (nq *NodeQuery) QueryPrev() *NodeQuery {
 		if err := nq.prepareQuery(ctx); err != nil {
 			return nil, err
 		}
+		selector := nq.sqlQuery()
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
 		step := sqlgraph.NewStep(
-			sqlgraph.From(node.Table, node.FieldID, nq.sqlQuery()),
+			sqlgraph.From(node.Table, node.FieldID, selector),
 			sqlgraph.To(node.Table, node.FieldID),
 			sqlgraph.Edge(sqlgraph.O2O, true, node.PrevTable, node.PrevColumn),
 		)
@@ -86,8 +90,12 @@ func (nq *NodeQuery) QueryNext() *NodeQuery {
 		if err := nq.prepareQuery(ctx); err != nil {
 			return nil, err
 		}
+		selector := nq.sqlQuery()
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
 		step := sqlgraph.NewStep(
-			sqlgraph.From(node.Table, node.FieldID, nq.sqlQuery()),
+			sqlgraph.From(node.Table, node.FieldID, selector),
 			sqlgraph.To(node.Table, node.FieldID),
 			sqlgraph.Edge(sqlgraph.O2O, false, node.NextTable, node.NextColumn),
 		)
@@ -99,23 +107,23 @@ func (nq *NodeQuery) QueryNext() *NodeQuery {
 
 // First returns the first Node entity in the query. Returns *NotFoundError when no node was found.
 func (nq *NodeQuery) First(ctx context.Context) (*Node, error) {
-	ns, err := nq.Limit(1).All(ctx)
+	nodes, err := nq.Limit(1).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(ns) == 0 {
+	if len(nodes) == 0 {
 		return nil, &NotFoundError{node.Label}
 	}
-	return ns[0], nil
+	return nodes[0], nil
 }
 
 // FirstX is like First, but panics if an error occurs.
 func (nq *NodeQuery) FirstX(ctx context.Context) *Node {
-	n, err := nq.First(ctx)
+	node, err := nq.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
 	}
-	return n
+	return node
 }
 
 // FirstID returns the first Node id in the query. Returns *NotFoundError when no id was found.
@@ -131,8 +139,8 @@ func (nq *NodeQuery) FirstID(ctx context.Context) (id int, err error) {
 	return ids[0], nil
 }
 
-// FirstXID is like FirstID, but panics if an error occurs.
-func (nq *NodeQuery) FirstXID(ctx context.Context) int {
+// FirstIDX is like FirstID, but panics if an error occurs.
+func (nq *NodeQuery) FirstIDX(ctx context.Context) int {
 	id, err := nq.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -142,13 +150,13 @@ func (nq *NodeQuery) FirstXID(ctx context.Context) int {
 
 // Only returns the only Node entity in the query, returns an error if not exactly one entity was returned.
 func (nq *NodeQuery) Only(ctx context.Context) (*Node, error) {
-	ns, err := nq.Limit(2).All(ctx)
+	nodes, err := nq.Limit(2).All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	switch len(ns) {
+	switch len(nodes) {
 	case 1:
-		return ns[0], nil
+		return nodes[0], nil
 	case 0:
 		return nil, &NotFoundError{node.Label}
 	default:
@@ -158,11 +166,11 @@ func (nq *NodeQuery) Only(ctx context.Context) (*Node, error) {
 
 // OnlyX is like Only, but panics if an error occurs.
 func (nq *NodeQuery) OnlyX(ctx context.Context) *Node {
-	n, err := nq.Only(ctx)
+	node, err := nq.Only(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return n
+	return node
 }
 
 // OnlyID returns the only Node id in the query, returns an error if not exactly one id was returned.
@@ -201,11 +209,11 @@ func (nq *NodeQuery) All(ctx context.Context) ([]*Node, error) {
 
 // AllX is like All, but panics if an error occurs.
 func (nq *NodeQuery) AllX(ctx context.Context) []*Node {
-	ns, err := nq.All(ctx)
+	nodes, err := nq.All(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return ns
+	return nodes
 }
 
 // IDs executes the query and returns a list of Node ids.
@@ -263,6 +271,9 @@ func (nq *NodeQuery) ExistX(ctx context.Context) bool {
 // Clone returns a duplicate of the query builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
 func (nq *NodeQuery) Clone() *NodeQuery {
+	if nq == nil {
+		return nil
+	}
 	return &NodeQuery{
 		config:     nq.config,
 		limit:      nq.limit,
@@ -270,6 +281,8 @@ func (nq *NodeQuery) Clone() *NodeQuery {
 		order:      append([]OrderFunc{}, nq.order...),
 		unique:     append([]string{}, nq.unique...),
 		predicates: append([]predicate.Node{}, nq.predicates...),
+		withPrev:   nq.withPrev.Clone(),
+		withNext:   nq.withNext.Clone(),
 		// clone intermediate query.
 		sql:  nq.sql.Clone(),
 		path: nq.path,
@@ -498,7 +511,7 @@ func (nq *NodeQuery) querySpec() *sqlgraph.QuerySpec {
 	if ps := nq.order; len(ps) > 0 {
 		_spec.Order = func(selector *sql.Selector) {
 			for i := range ps {
-				ps[i](selector)
+				ps[i](selector, node.ValidColumn)
 			}
 		}
 	}
@@ -517,7 +530,7 @@ func (nq *NodeQuery) sqlQuery() *sql.Selector {
 		p(selector)
 	}
 	for _, p := range nq.order {
-		p(selector)
+		p(selector, node.ValidColumn)
 	}
 	if offset := nq.offset; offset != nil {
 		// limit is mandatory for offset clause. We start
@@ -757,8 +770,12 @@ func (ngb *NodeGroupBy) sqlScan(ctx context.Context, v interface{}) error {
 			return &ValidationError{Name: f, err: fmt.Errorf("invalid field %q for group-by", f)}
 		}
 	}
+	selector := ngb.sqlQuery()
+	if err := selector.Err(); err != nil {
+		return err
+	}
 	rows := &sql.Rows{}
-	query, args := ngb.sqlQuery().Query()
+	query, args := selector.Query()
 	if err := ngb.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
@@ -771,7 +788,7 @@ func (ngb *NodeGroupBy) sqlQuery() *sql.Selector {
 	columns := make([]string, 0, len(ngb.fields)+len(ngb.fns))
 	columns = append(columns, ngb.fields...)
 	for _, fn := range ngb.fns {
-		columns = append(columns, fn(selector))
+		columns = append(columns, fn(selector, node.ValidColumn))
 	}
 	return selector.Select(columns...).GroupBy(ngb.fields...)
 }

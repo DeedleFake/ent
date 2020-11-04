@@ -24,14 +24,13 @@ import (
 // FileUpdate is the builder for updating File entities.
 type FileUpdate struct {
 	config
-	hooks      []Hook
-	mutation   *FileMutation
-	predicates []predicate.File
+	hooks    []Hook
+	mutation *FileMutation
 }
 
 // Where adds a new predicate for the builder.
 func (fu *FileUpdate) Where(ps ...predicate.File) *FileUpdate {
-	fu.predicates = append(fu.predicates, ps...)
+	fu.mutation.predicates = append(fu.mutation.predicates, ps...)
 	return fu
 }
 
@@ -99,6 +98,26 @@ func (fu *FileUpdate) SetNillableGroup(s *string) *FileUpdate {
 // ClearGroup clears the value of group.
 func (fu *FileUpdate) ClearGroup() *FileUpdate {
 	fu.mutation.ClearGroup()
+	return fu
+}
+
+// SetOp sets the op field.
+func (fu *FileUpdate) SetOp(b bool) *FileUpdate {
+	fu.mutation.SetOp(b)
+	return fu
+}
+
+// SetNillableOp sets the op field if the given value is not nil.
+func (fu *FileUpdate) SetNillableOp(b *bool) *FileUpdate {
+	if b != nil {
+		fu.SetOp(*b)
+	}
+	return fu
+}
+
+// ClearOp clears the value of op.
+func (fu *FileUpdate) ClearOp() *FileUpdate {
+	fu.mutation.ClearOp()
 	return fu
 }
 
@@ -279,7 +298,7 @@ func (fu *FileUpdate) gremlin() *dsl.Traversal {
 	}
 	constraints := make([]*constraint, 0, 1)
 	v := g.V().HasLabel(file.Label)
-	for _, p := range fu.predicates {
+	for _, p := range fu.mutation.predicates {
 		p(v)
 	}
 	var (
@@ -303,12 +322,18 @@ func (fu *FileUpdate) gremlin() *dsl.Traversal {
 	if value, ok := fu.mutation.Group(); ok {
 		v.Property(dsl.Single, file.FieldGroup, value)
 	}
+	if value, ok := fu.mutation.GetOp(); ok {
+		v.Property(dsl.Single, file.FieldOp, value)
+	}
 	var properties []interface{}
 	if fu.mutation.UserCleared() {
 		properties = append(properties, file.FieldUser)
 	}
 	if fu.mutation.GroupCleared() {
 		properties = append(properties, file.FieldGroup)
+	}
+	if fu.mutation.OpCleared() {
+		properties = append(properties, file.FieldOp)
 	}
 	if len(properties) > 0 {
 		v.SideEffect(__.Properties(properties...).Drop())
@@ -424,6 +449,26 @@ func (fuo *FileUpdateOne) SetNillableGroup(s *string) *FileUpdateOne {
 // ClearGroup clears the value of group.
 func (fuo *FileUpdateOne) ClearGroup() *FileUpdateOne {
 	fuo.mutation.ClearGroup()
+	return fuo
+}
+
+// SetOp sets the op field.
+func (fuo *FileUpdateOne) SetOp(b bool) *FileUpdateOne {
+	fuo.mutation.SetOp(b)
+	return fuo
+}
+
+// SetNillableOp sets the op field if the given value is not nil.
+func (fuo *FileUpdateOne) SetNillableOp(b *bool) *FileUpdateOne {
+	if b != nil {
+		fuo.SetOp(*b)
+	}
+	return fuo
+}
+
+// ClearOp clears the value of op.
+func (fuo *FileUpdateOne) ClearOp() *FileUpdateOne {
+	fuo.mutation.ClearOp()
 	return fuo
 }
 
@@ -555,11 +600,11 @@ func (fuo *FileUpdateOne) Save(ctx context.Context) (*File, error) {
 
 // SaveX is like Save, but panics if an error occurs.
 func (fuo *FileUpdateOne) SaveX(ctx context.Context) *File {
-	f, err := fuo.Save(ctx)
+	node, err := fuo.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return f
+	return node
 }
 
 // Exec executes the query on the entity.
@@ -633,12 +678,18 @@ func (fuo *FileUpdateOne) gremlin(id string) *dsl.Traversal {
 	if value, ok := fuo.mutation.Group(); ok {
 		v.Property(dsl.Single, file.FieldGroup, value)
 	}
+	if value, ok := fuo.mutation.GetOp(); ok {
+		v.Property(dsl.Single, file.FieldOp, value)
+	}
 	var properties []interface{}
 	if fuo.mutation.UserCleared() {
 		properties = append(properties, file.FieldUser)
 	}
 	if fuo.mutation.GroupCleared() {
 		properties = append(properties, file.FieldGroup)
+	}
+	if fuo.mutation.OpCleared() {
+		properties = append(properties, file.FieldOp)
 	}
 	if len(properties) > 0 {
 		v.SideEffect(__.Properties(properties...).Drop())

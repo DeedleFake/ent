@@ -31,7 +31,7 @@ type (
 	MutateFunc = ent.MutateFunc
 )
 
-// OrderFunc applies an ordering on either graph traversal or sql selector.
+// OrderFunc applies an ordering on the graph traversal.
 type OrderFunc func(*dsl.Traversal)
 
 // Asc applies the given fields in ASC order.
@@ -193,7 +193,7 @@ func IsNotFound(err error) bool {
 	return errors.As(err, &e)
 }
 
-// MaskNotFound masks nor found error.
+// MaskNotFound masks not found error.
 func MaskNotFound(err error) error {
 	if IsNotFound(err) {
 		return nil

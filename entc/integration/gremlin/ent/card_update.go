@@ -24,14 +24,13 @@ import (
 // CardUpdate is the builder for updating Card entities.
 type CardUpdate struct {
 	config
-	hooks      []Hook
-	mutation   *CardMutation
-	predicates []predicate.Card
+	hooks    []Hook
+	mutation *CardMutation
 }
 
 // Where adds a new predicate for the builder.
 func (cu *CardUpdate) Where(ps ...predicate.Card) *CardUpdate {
-	cu.predicates = append(cu.predicates, ps...)
+	cu.mutation.predicates = append(cu.mutation.predicates, ps...)
 	return cu
 }
 
@@ -216,7 +215,7 @@ func (cu *CardUpdate) gremlin() *dsl.Traversal {
 	}
 	constraints := make([]*constraint, 0, 1)
 	v := g.V().HasLabel(card.Label)
-	for _, p := range cu.predicates {
+	for _, p := range cu.mutation.predicates {
 		p(v)
 	}
 	var (
@@ -402,11 +401,11 @@ func (cuo *CardUpdateOne) Save(ctx context.Context) (*Card, error) {
 
 // SaveX is like Save, but panics if an error occurs.
 func (cuo *CardUpdateOne) SaveX(ctx context.Context) *Card {
-	c, err := cuo.Save(ctx)
+	node, err := cuo.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return c
+	return node
 }
 
 // Exec executes the query on the entity.

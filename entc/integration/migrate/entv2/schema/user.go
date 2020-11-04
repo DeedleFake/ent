@@ -47,7 +47,8 @@ func (User) Fields() []ent.Field {
 		// extending name field to longtext.
 		field.Text("name"),
 		// changing nickname from unique no non-unique.
-		field.String("nickname"),
+		field.String("nickname").
+			MaxLen(255),
 		// adding new columns (must be either optional, or with a default value).
 		field.String("phone").
 			Default("unknown"),
@@ -75,6 +76,9 @@ func (User) Fields() []ent.Field {
 		field.Enum("status").
 			Optional().
 			Values("done", "pending"),
+		// remove the max-length constraint from varchar.
+		field.String("workplace").
+			Optional(),
 		// deleting the `address` column.
 	}
 }

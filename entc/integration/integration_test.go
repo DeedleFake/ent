@@ -98,6 +98,7 @@ var (
 		Indexes,
 		Types,
 		Clone,
+		EntQL,
 		Sanity,
 		Paging,
 		Select,
@@ -214,8 +215,18 @@ func Sanity(t *testing.T, client *ent.Client) {
 	client.User.Delete().Where(user.IDIn(ids...)).ExecX(ctx)
 	ids = client.User.Query().IDsX(ctx)
 	require.Empty(ids)
-	// nop.
+	// Nop.
 	client.User.Delete().Where(user.IDIn(ids...)).ExecX(ctx)
+	// Check the struct-tag annotation.
+	fi, ok := reflect.TypeOf(ent.Card{}).FieldByName("Edges")
+	require.True(ok)
+	require.NotEmpty(fi.Tag.Get("mashraki"))
+	fi, ok = reflect.TypeOf(ent.Card{}).FieldByName("ID")
+	require.True(ok)
+	require.Equal("-", fi.Tag.Get("json"))
+	fi, ok = reflect.TypeOf(ent.Card{}).FieldByName("Number")
+	require.True(ok)
+	require.Equal("-", fi.Tag.Get("json"))
 }
 
 func Clone(t *testing.T, client *ent.Client) {
@@ -596,6 +607,12 @@ func Relation(t *testing.T, client *ent.Client) {
 	require.EqualError(err, "invalid field \"unknown_field\" for selection")
 	_, err = client.Group.Query().GroupBy("unknown_field").String(ctx)
 	require.EqualError(err, "invalid field \"unknown_field\" for group-by")
+	_, err = client.User.Query().Order(ent.Asc("invalid")).Only(ctx)
+	require.EqualError(err, "invalid field \"invalid\" for ordering")
+	_, err = client.User.Query().Order(ent.Asc("invalid")).QueryFollowing().Only(ctx)
+	require.EqualError(err, "invalid field \"invalid\" for ordering")
+	_, err = client.User.Query().GroupBy("name").Aggregate(ent.Sum("invalid")).String(ctx)
+	require.EqualError(err, "invalid field \"invalid\" for grouping")
 
 	t.Log("query using edge-with predicate")
 	require.Len(usr.QueryGroups().Where(group.HasInfoWith(groupinfo.Desc("group info"))).AllX(ctx), 1)
@@ -609,14 +626,14 @@ func Relation(t *testing.T, client *ent.Client) {
 	require.Len(client.GroupInfo.Query().Where(groupinfo.Or(groupinfo.Desc("group info"), groupinfo.HasGroupsWith(group.HasUsersWith(user.Name("alex"))))).AllX(ctx), 1)
 
 	t.Log("query with ordering")
-	u1 := client.User.Query().Order(ent.Asc(user.FieldName)).FirstXID(ctx)
-	u2 := client.User.Query().Order(ent.Desc(user.FieldName)).FirstXID(ctx)
+	u1 := client.User.Query().Order(ent.Asc(user.FieldName)).FirstIDX(ctx)
+	u2 := client.User.Query().Order(ent.Desc(user.FieldName)).FirstIDX(ctx)
 	require.NotEqual(u1, u2)
-	u1 = client.User.Query().Order(ent.Asc(user.FieldLast), ent.Asc(user.FieldAge)).FirstXID(ctx)
-	u2 = client.User.Query().Order(ent.Asc(user.FieldLast), ent.Desc(user.FieldAge)).FirstXID(ctx)
+	u1 = client.User.Query().Order(ent.Asc(user.FieldLast), ent.Asc(user.FieldAge)).FirstIDX(ctx)
+	u2 = client.User.Query().Order(ent.Asc(user.FieldLast), ent.Desc(user.FieldAge)).FirstIDX(ctx)
 	require.NotEqual(u1, u2)
-	u1 = client.User.Query().Order(ent.Asc(user.FieldName, user.FieldAge)).FirstXID(ctx)
-	u2 = client.User.Query().Order(ent.Asc(user.FieldName, user.FieldAge)).FirstXID(ctx)
+	u1 = client.User.Query().Order(ent.Asc(user.FieldName, user.FieldAge)).FirstIDX(ctx)
+	u2 = client.User.Query().Order(ent.Asc(user.FieldName, user.FieldAge)).FirstIDX(ctx)
 	require.Equal(u1, u2)
 
 	t.Log("query path")
@@ -1122,6 +1139,16 @@ func EagerLoading(t *testing.T, client *ent.Client) {
 		require.Len(a8m.Edges.Pets, 1)
 		require.Equal("pedro", a8m.Edges.Pets[0].Name)
 		require.Equal(nati.Name, a8m.Edges.Pets[0].Edges.Team.Name)
+
+		a8m = client.User.
+			Query().
+			Where(user.ID(a8m.ID)).
+			WithPets(func(q *ent.PetQuery) {
+				q.Where(pet.Name("unknown"))
+			}).
+			OnlyX(ctx)
+		require.Empty(a8m.Edges.Pets)
+		require.NotNil(a8m.Edges.Pets)
 	})
 
 	t.Run("M2M", func(t *testing.T) {
@@ -1226,6 +1253,7 @@ func Mutation(t *testing.T, client *ent.Client) {
 var (
 	_ = ent.CardExtension{}
 	_ = ent.Card{}.StaticField
+	_ = ent.Client{}.TemplateField
 	_ = []filetype.State{filetype.StateOn, filetype.StateOff}
 	_ = []filetype.Type{filetype.TypeJPG, filetype.TypePNG, filetype.TypeSVG}
 )

@@ -22,14 +22,13 @@ import (
 // TaskUpdate is the builder for updating Task entities.
 type TaskUpdate struct {
 	config
-	hooks      []Hook
-	mutation   *TaskMutation
-	predicates []predicate.Task
+	hooks    []Hook
+	mutation *TaskMutation
 }
 
 // Where adds a new predicate for the builder.
 func (tu *TaskUpdate) Where(ps ...predicate.Task) *TaskUpdate {
-	tu.predicates = append(tu.predicates, ps...)
+	tu.mutation.predicates = append(tu.mutation.predicates, ps...)
 	return tu
 }
 
@@ -140,7 +139,7 @@ func (tu *TaskUpdate) gremlinSave(ctx context.Context) (int, error) {
 
 func (tu *TaskUpdate) gremlin() *dsl.Traversal {
 	v := g.V().HasLabel(task.Label)
-	for _, p := range tu.predicates {
+	for _, p := range tu.mutation.predicates {
 		p(v)
 	}
 	var (
@@ -227,11 +226,11 @@ func (tuo *TaskUpdateOne) Save(ctx context.Context) (*Task, error) {
 
 // SaveX is like Save, but panics if an error occurs.
 func (tuo *TaskUpdateOne) SaveX(ctx context.Context) *Task {
-	t, err := tuo.Save(ctx)
+	node, err := tuo.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return t
+	return node
 }
 
 // Exec executes the query on the entity.

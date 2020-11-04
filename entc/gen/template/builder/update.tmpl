@@ -26,12 +26,11 @@ import (
 type {{ $builder }} struct {
 	config
 	{{- template "update/fields" $ -}}
-	predicates []predicate.{{ $.Name }}
 }
 
 // Where adds a new predicate for the builder.
 func ({{ $receiver}} *{{ $builder }}) Where(ps ...predicate.{{ $.Name }}) *{{ $builder }} {
-	{{ $receiver}}.predicates = append({{ $receiver}}.predicates, ps...)
+	{{ $mutation }}.predicates = append({{ $mutation }}.predicates, ps...)
 	return {{ $receiver }}
 }
 
@@ -179,11 +178,11 @@ func ({{ $receiver }} *{{ $onebuilder }} ) Save(ctx context.Context) (*{{ $.Name
 
 // SaveX is like Save, but panics if an error occurs.
 func ({{ $receiver }} *{{ $onebuilder }}) SaveX(ctx context.Context) *{{ $.Name }} {
-	{{ $.Receiver }}, err := {{ $receiver }}.Save(ctx)
+	node, err := {{ $receiver }}.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return {{ $.Receiver }}
+	return node
 }
 
 // Exec executes the query on the entity.

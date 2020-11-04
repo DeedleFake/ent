@@ -21,14 +21,13 @@ import (
 // SpecUpdate is the builder for updating Spec entities.
 type SpecUpdate struct {
 	config
-	hooks      []Hook
-	mutation   *SpecMutation
-	predicates []predicate.Spec
+	hooks    []Hook
+	mutation *SpecMutation
 }
 
 // Where adds a new predicate for the builder.
 func (su *SpecUpdate) Where(ps ...predicate.Spec) *SpecUpdate {
-	su.predicates = append(su.predicates, ps...)
+	su.mutation.predicates = append(su.mutation.predicates, ps...)
 	return su
 }
 
@@ -138,7 +137,7 @@ func (su *SpecUpdate) gremlinSave(ctx context.Context) (int, error) {
 
 func (su *SpecUpdate) gremlin() *dsl.Traversal {
 	v := g.V().HasLabel(spec.Label)
-	for _, p := range su.predicates {
+	for _, p := range su.mutation.predicates {
 		p(v)
 	}
 	var (
@@ -238,11 +237,11 @@ func (suo *SpecUpdateOne) Save(ctx context.Context) (*Spec, error) {
 
 // SaveX is like Save, but panics if an error occurs.
 func (suo *SpecUpdateOne) SaveX(ctx context.Context) *Spec {
-	s, err := suo.Save(ctx)
+	node, err := suo.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return s
+	return node
 }
 
 // Exec executes the query on the entity.

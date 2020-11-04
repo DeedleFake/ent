@@ -21,14 +21,13 @@ import (
 // BlobUpdate is the builder for updating Blob entities.
 type BlobUpdate struct {
 	config
-	hooks      []Hook
-	mutation   *BlobMutation
-	predicates []predicate.Blob
+	hooks    []Hook
+	mutation *BlobMutation
 }
 
 // Where adds a new predicate for the builder.
 func (bu *BlobUpdate) Where(ps ...predicate.Blob) *BlobUpdate {
-	bu.predicates = append(bu.predicates, ps...)
+	bu.mutation.predicates = append(bu.mutation.predicates, ps...)
 	return bu
 }
 
@@ -166,7 +165,7 @@ func (bu *BlobUpdate) sqlSave(ctx context.Context) (n int, err error) {
 			},
 		},
 	}
-	if ps := bu.predicates; len(ps) > 0 {
+	if ps := bu.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
 				ps[i](selector)
@@ -390,11 +389,11 @@ func (buo *BlobUpdateOne) Save(ctx context.Context) (*Blob, error) {
 
 // SaveX is like Save, but panics if an error occurs.
 func (buo *BlobUpdateOne) SaveX(ctx context.Context) *Blob {
-	b, err := buo.Save(ctx)
+	node, err := buo.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return b
+	return node
 }
 
 // Exec executes the query on the entity.
@@ -410,7 +409,7 @@ func (buo *BlobUpdateOne) ExecX(ctx context.Context) {
 	}
 }
 
-func (buo *BlobUpdateOne) sqlSave(ctx context.Context) (b *Blob, err error) {
+func (buo *BlobUpdateOne) sqlSave(ctx context.Context) (_node *Blob, err error) {
 	_spec := &sqlgraph.UpdateSpec{
 		Node: &sqlgraph.NodeSpec{
 			Table:   blob.Table,
@@ -522,9 +521,9 @@ func (buo *BlobUpdateOne) sqlSave(ctx context.Context) (b *Blob, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	b = &Blob{config: buo.config}
-	_spec.Assign = b.assignValues
-	_spec.ScanValues = b.scanValues()
+	_node = &Blob{config: buo.config}
+	_spec.Assign = _node.assignValues
+	_spec.ScanValues = _node.scanValues()
 	if err = sqlgraph.UpdateNode(ctx, buo.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{blob.Label}
@@ -533,5 +532,5 @@ func (buo *BlobUpdateOne) sqlSave(ctx context.Context) (b *Blob, err error) {
 		}
 		return nil, err
 	}
-	return b, nil
+	return _node, nil
 }

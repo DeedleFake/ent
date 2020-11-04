@@ -25,14 +25,13 @@ import (
 // GroupUpdate is the builder for updating Group entities.
 type GroupUpdate struct {
 	config
-	hooks      []Hook
-	mutation   *GroupMutation
-	predicates []predicate.Group
+	hooks    []Hook
+	mutation *GroupMutation
 }
 
 // Where adds a new predicate for the builder.
 func (gu *GroupUpdate) Where(ps ...predicate.Group) *GroupUpdate {
-	gu.predicates = append(gu.predicates, ps...)
+	gu.mutation.predicates = append(gu.mutation.predicates, ps...)
 	return gu
 }
 
@@ -338,7 +337,7 @@ func (gu *GroupUpdate) gremlin() *dsl.Traversal {
 	}
 	constraints := make([]*constraint, 0, 2)
 	v := g.V().HasLabel(group.Label)
-	for _, p := range gu.predicates {
+	for _, p := range gu.mutation.predicates {
 		p(v)
 	}
 	var (
@@ -673,11 +672,11 @@ func (guo *GroupUpdateOne) Save(ctx context.Context) (*Group, error) {
 
 // SaveX is like Save, but panics if an error occurs.
 func (guo *GroupUpdateOne) SaveX(ctx context.Context) *Group {
-	gr, err := guo.Save(ctx)
+	node, err := guo.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
-	return gr
+	return node
 }
 
 // Exec executes the query on the entity.

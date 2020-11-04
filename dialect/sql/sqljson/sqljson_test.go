@@ -25,7 +25,7 @@ func TestWritePath(t *testing.T) {
 				Select("*").
 				From(sql.Table("users")).
 				Where(sqljson.ValueEQ("a", 1, sqljson.Path("b", "c", "[1]", "d"), sqljson.Cast("int"))),
-			wantQuery: `SELECT * FROM "users" WHERE CAST("a"->'b'->'c'->1->'d' AS int) = $1`,
+			wantQuery: `SELECT * FROM "users" WHERE ("a"->'b'->'c'->1->>'d')::int = $1`,
 			wantArgs:  []interface{}{1},
 		},
 		{
@@ -65,7 +65,7 @@ func TestWritePath(t *testing.T) {
 					sql.EQ("e", 10),
 					sqljson.ValueEQ("a", 1, sqljson.DotPath("b.c")),
 				)),
-			wantQuery: `SELECT * FROM "test" WHERE "e" = $1 AND "a"->'b'->'c' = $2`,
+			wantQuery: `SELECT * FROM "test" WHERE "e" = $1 AND ("a"->'b'->>'c')::int = $2`,
 			wantArgs:  []interface{}{10, 1},
 		},
 		{
@@ -89,8 +89,111 @@ func TestWritePath(t *testing.T) {
 				Select("*").
 				From(sql.Table("users")).
 				Where(sqljson.ValueEQ("a", 1, sqljson.Path("b", "c", "[1]", "d"), sqljson.Cast("int"))),
-			wantQuery: `SELECT * FROM "users" WHERE CAST("a"->'b'->'c'->1->'d' AS int) = $1`,
+			wantQuery: `SELECT * FROM "users" WHERE ("a"->'b'->'c'->1->>'d')::int = $1`,
 			wantArgs:  []interface{}{1},
+		},
+		{
+			input: sql.Dialect(dialect.Postgres).
+				Select("*").
+				From(sql.Table("users")).
+				Where(
+					sql.Or(
+						sqljson.ValueNEQ("a", 1, sqljson.Path("b")),
+						sqljson.ValueGT("a", 1, sqljson.Path("c")),
+						sqljson.ValueGTE("a", 1.1, sqljson.Path("d")),
+						sqljson.ValueLT("a", 1, sqljson.Path("e")),
+						sqljson.ValueLTE("a", 1, sqljson.Path("f")),
+					),
+				),
+			wantQuery: `SELECT * FROM "users" WHERE ("a"->>'b')::int <> $1 OR ("a"->>'c')::int > $2 OR ("a"->>'d')::float >= $3 OR ("a"->>'e')::int < $4 OR ("a"->>'f')::int <= $5`,
+			wantArgs:  []interface{}{1, 1, 1.1, 1, 1},
+		},
+		{
+			input: sql.Dialect(dialect.Postgres).
+				Select("*").
+				From(sql.Table("users")).
+				Where(sqljson.LenEQ("a", 1)),
+			wantQuery: `SELECT * FROM "users" WHERE JSONB_ARRAY_LENGTH("a") = $1`,
+			wantArgs:  []interface{}{1},
+		},
+		{
+			input: sql.Dialect(dialect.MySQL).
+				Select("*").
+				From(sql.Table("users")).
+				Where(sqljson.LenEQ("a", 1)),
+			wantQuery: "SELECT * FROM `users` WHERE JSON_LENGTH(`a`, \"$\") = ?",
+			wantArgs:  []interface{}{1},
+		},
+		{
+			input: sql.Dialect(dialect.SQLite).
+				Select("*").
+				From(sql.Table("users")).
+				Where(sqljson.LenEQ("a", 1)),
+			wantQuery: "SELECT * FROM `users` WHERE JSON_ARRAY_LENGTH(`a`, \"$\") = ?",
+			wantArgs:  []interface{}{1},
+		},
+		{
+			input: sql.Dialect(dialect.SQLite).
+				Select("*").
+				From(sql.Table("users")).
+				Where(
+					sql.Or(
+						sqljson.LenGT("a", 1, sqljson.Path("b")),
+						sqljson.LenGTE("a", 1, sqljson.Path("c")),
+						sqljson.LenLT("a", 1, sqljson.Path("d")),
+						sqljson.LenLTE("a", 1, sqljson.Path("e")),
+					),
+				),
+			wantQuery: "SELECT * FROM `users` WHERE JSON_ARRAY_LENGTH(`a`, \"$.b\") > ? OR JSON_ARRAY_LENGTH(`a`, \"$.c\") >= ? OR JSON_ARRAY_LENGTH(`a`, \"$.d\") < ? OR JSON_ARRAY_LENGTH(`a`, \"$.e\") <= ?",
+			wantArgs:  []interface{}{1, 1, 1, 1},
+		},
+		{
+			input: sql.Dialect(dialect.MySQL).
+				Select("*").
+				From(sql.Table("users")).
+				Where(sqljson.ValueContains("tags", "foo")),
+			wantQuery: "SELECT * FROM `users` WHERE JSON_CONTAINS(`tags`, ?, \"$\") = ?",
+			wantArgs:  []interface{}{"\"foo\"", 1},
+		},
+		{
+			input: sql.Dialect(dialect.MySQL).
+				Select("*").
+				From(sql.Table("users")).
+				Where(sqljson.ValueContains("tags", 1, sqljson.Path("a"))),
+			wantQuery: "SELECT * FROM `users` WHERE JSON_CONTAINS(`tags`, ?, \"$.a\") = ?",
+			wantArgs:  []interface{}{"1", 1},
+		},
+		{
+			input: sql.Dialect(dialect.SQLite).
+				Select("*").
+				From(sql.Table("users")).
+				Where(sqljson.ValueContains("tags", "foo")),
+			wantQuery: "SELECT * FROM `users` WHERE EXISTS(SELECT * FROM JSON_EACH(`tags`, \"$\") WHERE `value` = ?)",
+			wantArgs:  []interface{}{"foo"},
+		},
+		{
+			input: sql.Dialect(dialect.SQLite).
+				Select("*").
+				From(sql.Table("users")).
+				Where(sqljson.ValueContains("tags", 1, sqljson.Path("a"))),
+			wantQuery: "SELECT * FROM `users` WHERE EXISTS(SELECT * FROM JSON_EACH(`tags`, \"$.a\") WHERE `value` = ?)",
+			wantArgs:  []interface{}{1},
+		},
+		{
+			input: sql.Dialect(dialect.Postgres).
+				Select("*").
+				From(sql.Table("users")).
+				Where(sqljson.ValueContains("tags", "foo")),
+			wantQuery: "SELECT * FROM \"users\" WHERE \"tags\" @> $1",
+			wantArgs:  []interface{}{"\"foo\""},
+		},
+		{
+			input: sql.Dialect(dialect.Postgres).
+				Select("*").
+				From(sql.Table("users")).
+				Where(sqljson.ValueContains("tags", 1, sqljson.Path("a"))),
+			wantQuery: "SELECT * FROM \"users\" WHERE (\"tags\"->'a')::jsonb @> $1",
+			wantArgs:  []interface{}{"1"},
 		},
 	}
 	for i, tt := range tests {
