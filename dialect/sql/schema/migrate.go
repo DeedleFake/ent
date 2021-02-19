@@ -337,7 +337,9 @@ func (m *Migrate) changeSet(curr, new *Table) (*changes, error) {
 		case !ok:
 			change.column.add = append(change.column.add, c1)
 		case !c2.Type.Valid():
-			return nil, fmt.Errorf("invalid type %q for column %q", c2.typ, c2.Name)
+			// return nil, fmt.Errorf("invalid type %q for column %q", c2.typ, c2.Name)
+			fmt.Printf("invalid type %q for column %q on table %v\n", c2.typ, c2.Name, new.Name)
+			continue
 		// Modify a non-unique column to unique.
 		case c1.Unique && !c2.Unique:
 			change.index.add.append(&Index{
