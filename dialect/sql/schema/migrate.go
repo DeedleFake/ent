@@ -9,6 +9,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"math"
+	"os"
 	"sort"
 
 	"entgo.io/ent/dialect"
@@ -337,7 +338,8 @@ func (m *Migrate) changeSet(curr, new *Table) (*changes, error) {
 		case !ok:
 			change.column.add = append(change.column.add, c1)
 		case !c2.Type.Valid():
-			return nil, fmt.Errorf("invalid type %q for column %q", c2.typ, c2.Name)
+			fmt.Fprintf(os.Stderr, "invalid type %q for column %q", c2.typ, c2.Name)
+			continue
 		// Modify a non-unique column to unique.
 		case c1.Unique && !c2.Unique:
 			change.index.add.append(&Index{
@@ -356,7 +358,8 @@ func (m *Migrate) changeSet(curr, new *Table) (*changes, error) {
 		// Extending column types.
 		case m.cType(c1) != m.cType(c2):
 			if !c2.ConvertibleTo(c1) {
-				return nil, fmt.Errorf("changing column type for %q is invalid (%s != %s)", c1.Name, m.cType(c1), m.cType(c2))
+				fmt.Fprintf(os.Stderr, "changing column type for %q is invalid (%s != %s)\n", c1.Name, m.cType(c1), m.cType(c2))
+				continue
 			}
 			fallthrough
 		// Change nullability of a column.
